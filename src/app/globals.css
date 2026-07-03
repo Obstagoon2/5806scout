@@ -1,0 +1,84 @@
+@import "tailwindcss";
+
+/*
+ * Design direction: technical / utilitarian "pit crew" field-ops tool —
+ * dense, fast to scan, built for repeated use in loud stands (mobile) and
+ * focused review at a laptop (desktop). Maroon is the identity color but is
+ * paired with neutral graphite chrome and functional accents so the palette
+ * stays multi-dimensional rather than maroon-on-maroon.
+ */
+:root {
+  --background: #faf7f5;
+  --foreground: #201a1b;
+
+  /* Maroon — primary/brand, used for actions and emphasis, not backgrounds. */
+  --color-maroon-50: #fbeced;
+  --color-maroon-100: #f5d0d3;
+  --color-maroon-200: #e8a2a8;
+  --color-maroon-300: #d8737d;
+  --color-maroon-400: #c04a56;
+  --color-maroon-500: #8f1f2b;
+  --color-maroon-600: #7a1a24;
+  --color-maroon-700: #5e141c;
+  --color-maroon-800: #451015;
+  --color-maroon-900: #2e0a0e;
+
+  /* Graphite — neutral chrome: nav, borders, body text. */
+  --color-graphite-50: #f7f7f8;
+  --color-graphite-100: #eceded;
+  --color-graphite-200: #d5d7d9;
+  --color-graphite-300: #b3b7bb;
+  --color-graphite-400: #888e94;
+  --color-graphite-500: #5f6569;
+  --color-graphite-600: #454a4e;
+  --color-graphite-700: #33373a;
+  --color-graphite-800: #232629;
+  --color-graphite-900: #17181a;
+
+  /* Functional accents — status, not decoration. */
+  --color-amber-500: #d97706;
+  --color-amber-100: #fdecd2;
+  --color-green-500: #15803d;
+  --color-green-100: #d9f0e1;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-maroon-50: var(--color-maroon-50);
+  --color-maroon-100: var(--color-maroon-100);
+  --color-maroon-200: var(--color-maroon-200);
+  --color-maroon-300: var(--color-maroon-300);
+  --color-maroon-400: var(--color-maroon-400);
+  --color-maroon-500: var(--color-maroon-500);
+  --color-maroon-600: var(--color-maroon-600);
+  --color-maroon-700: var(--color-maroon-700);
+  --color-maroon-800: var(--color-maroon-800);
+  --color-maroon-900: var(--color-maroon-900);
+  --color-graphite-50: var(--color-graphite-50);
+  --color-graphite-100: var(--color-graphite-100);
+  --color-graphite-200: var(--color-graphite-200);
+  --color-graphite-300: var(--color-graphite-300);
+  --color-graphite-400: var(--color-graphite-400);
+  --color-graphite-500: var(--color-graphite-500);
+  --color-graphite-600: var(--color-graphite-600);
+  --color-graphite-700: var(--color-graphite-700);
+  --color-graphite-800: var(--color-graphite-800);
+  --color-graphite-900: var(--color-graphite-900);
+  --color-amber-500: var(--color-amber-500);
+  --color-amber-100: var(--color-amber-100);
+  --color-green-500: var(--color-green-500);
+  --color-green-100: var(--color-green-100);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+  /* Stat/number treatment — the memorable detail from the design direction:
+     scores, match numbers, and EPA figures render in monospace so columns
+     of digits line up and read like telemetry, not prose. */
+  --font-stat: var(--font-geist-mono);
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-sans), Arial, Helvetica, sans-serif;
+}

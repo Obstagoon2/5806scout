@@ -1,0 +1,74 @@
+rules_version = '2';
+
+// Team-scoped access model:
+// - users/{uid} — a scout/admin profile. teamId + role live here.
+// - teams/{teamId} — one doc per FRC team, plus subcollections (pit scout,
+//   match scout, etc. added in later milestones) that inherit the same
+//   same-team read/write rule below.
+//
+// Admin signup: the app validates a server-side ADMIN_SIGNUP_CODE (via
+// /api/admin-code) before creating a profile with role 'admin'. Rules can't
+// see that code, so 'admin' is allowed at create time — the code check is
+// the gate. Post-signup role escalation is still blocked below.
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function myProfile() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+
+    function isSameTeam(teamId) {
+      return isSignedIn() && myProfile().teamId == teamId;
+    }
+
+    function isAdminOfTeam(teamId) {
+      return isSameTeam(teamId) && myProfile().role == 'admin';
+    }
+
+    match /users/{userId} {
+      // Signup: a user may only create their own active profile. 'admin' is
+      // permitted here because the signup flow validates ADMIN_SIGNUP_CODE
+      // server-side first (see header comment).
+      allow create: if isSignedIn()
+        && request.auth.uid == userId
+        && request.resource.data.role in ['scout', 'admin']
+        && request.resource.data.active == true;
+
+      // Read: yourself, or any teammate (so scouts/admins can see the roster).
+      allow read: if isSignedIn()
+        && (request.auth.uid == userId || isSameTeam(resource.data.teamId));
+
+      // Update: yourself (profile edits), or a team admin managing scouts
+      // (e.g. activate/deactivate) — but a non-admin can never grant
+      // themselves the admin role or move themselves to another team.
+      allow update: if isSignedIn()
+        && (
+          (request.auth.uid == userId
+            && request.resource.data.role == resource.data.role
+            && request.resource.data.teamId == resource.data.teamId)
+          || isAdminOfTeam(resource.data.teamId)
+        );
+
+      allow delete: if false;
+    }
+
+    match /teams/{teamId} {
+      // Bootstrap: any signed-in user can create the team doc for their own
+      // team number if it doesn't exist yet (first signup for a new team).
+      allow create: if isSignedIn() && !exists(/databases/$(database)/documents/teams/$(teamId));
+
+      allow read: if isSameTeam(teamId);
+      allow update: if isAdminOfTeam(teamId);
+      allow delete: if false;
+
+      // Subcollections (pit scout, match scout, etc.) inherit team scoping.
+      match /{document=**} {
+        allow read, write: if isSameTeam(teamId);
+      }
+    }
+  }
+}
