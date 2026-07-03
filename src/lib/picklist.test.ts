@@ -1,6 +1,13 @@
 import { describe, expect, it } from "vitest";
 import type { EventTeam } from "./eventData";
-import { moveItem, reconcileOrder, toggleStruck } from "./picklist";
+import {
+  moveItem,
+  moveToDoNotPick,
+  reconcileOrder,
+  restoreFromDoNotPick,
+  splitDoNotPick,
+  toggleStruck,
+} from "./picklist";
 
 function team(teamNumber: number, epa: number | null): EventTeam {
   return { teamNumber, nickname: String(teamNumber), city: "", epa, epaRank: null };
@@ -42,5 +49,51 @@ describe("toggleStruck", () => {
   it("adds when absent and removes when present", () => {
     expect(toggleStruck([], 254)).toEqual([254]);
     expect(toggleStruck([254, 111], 254)).toEqual([111]);
+  });
+});
+
+describe("splitDoNotPick", () => {
+  it("splits DNP teams out of the ranking, keeping DNP order", () => {
+    expect(splitDoNotPick([222, 111, 444, 333], [444, 222])).toEqual({
+      order: [111, 333],
+      doNotPick: [444, 222],
+    });
+  });
+
+  it("drops DNP teams that left the event", () => {
+    expect(splitDoNotPick([222, 111], [999, 111])).toEqual({
+      order: [222],
+      doNotPick: [111],
+    });
+  });
+});
+
+describe("moveToDoNotPick / restoreFromDoNotPick", () => {
+  it("moves a team to the bottom of the DNP list", () => {
+    expect(moveToDoNotPick([1, 2, 3], [9], 2)).toEqual({
+      order: [1, 3],
+      doNotPick: [9, 2],
+    });
+  });
+
+  it("restores a team to the bottom of the ranking", () => {
+    expect(restoreFromDoNotPick([1, 3], [9, 2], 2)).toEqual({
+      order: [1, 3, 2],
+      doNotPick: [9],
+    });
+  });
+
+  it("round-trips move + restore", () => {
+    const moved = moveToDoNotPick([1, 2, 3], [], 1);
+    const restored = restoreFromDoNotPick(moved.order, moved.doNotPick, 1);
+    expect(restored).toEqual({ order: [2, 3, 1], doNotPick: [] });
+  });
+
+  it("is a no-op when the team is not in the source list", () => {
+    expect(moveToDoNotPick([1, 2], [3], 7)).toEqual({ order: [1, 2], doNotPick: [3] });
+    expect(restoreFromDoNotPick([1, 2], [3], 7)).toEqual({
+      order: [1, 2],
+      doNotPick: [3],
+    });
   });
 });

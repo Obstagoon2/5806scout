@@ -156,6 +156,9 @@ export default function TalkiePage() {
     void patch(request.id, {
       assigneeUid: member?.uid ?? null,
       assigneeName: member?.fullName ?? null,
+      // Drives the dashboard notification banner for the assigned scout
+      // (see AssignmentNotifications); dismissing sets it back to true.
+      assigneeSeen: !member,
       // Assignment moves an open request forward; clearing it reopens.
       ...(request.status !== "done"
         ? { status: member ? "assigned" : "open" }

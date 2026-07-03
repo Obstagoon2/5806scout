@@ -13,7 +13,6 @@ export default function SignupPage() {
   const [password, setPassword] = useState("");
   const [fullName, setFullName] = useState("");
   const [teamNumber, setTeamNumber] = useState("");
-  const [teamName, setTeamName] = useState("");
   const [asAdmin, setAsAdmin] = useState(false);
   const [adminCode, setAdminCode] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -52,7 +51,7 @@ export default function SignupPage() {
         doc(db, "teams", teamId),
         {
           teamNumber: teamId,
-          teamName: teamName.trim() || teamId,
+          teamName: teamId,
           createdAt: serverTimestamp(),
         },
         { merge: false },
@@ -107,15 +106,6 @@ export default function SignupPage() {
               onChange={(e) => setTeamNumber(e.target.value)}
               className={`${inputClass} font-stat`}
               placeholder="5806"
-            />
-          </Field>
-          <Field label="Team name (only used when creating a new team)">
-            <input
-              type="text"
-              value={teamName}
-              onChange={(e) => setTeamName(e.target.value)}
-              className={inputClass}
-              placeholder="e.g. Basement Lions"
             />
           </Field>
           <Field label="Email">

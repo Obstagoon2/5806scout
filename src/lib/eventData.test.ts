@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
   mapMatches,
+  mapRankings,
   mapTeams,
+  mapVenue,
   teamKeyToNumber,
   type StatboticsTeamEvent,
   type TbaMatchSimple,
@@ -49,6 +51,13 @@ describe("mapTeams", () => {
     expect(teams[0].epa).toBeCloseTo(92.4);
     expect(teams[0].epaRank).toBe(1);
     expect(teams[1].epaRank).toBe(2);
+  });
+
+  it("reads epa when total_points is a plain number (current API shape)", () => {
+    const teams = mapTeams(tbaTeams, [
+      { team: 254, epa: { total_points: 88.1 } },
+    ]);
+    expect(teams.find((t) => t.teamNumber === 254)?.epa).toBeCloseTo(88.1);
   });
 
   it("leaves epa null for teams Statbotics doesn't know", () => {
@@ -104,5 +113,78 @@ describe("mapMatches", () => {
       tbaMatch({ key: "sf1", comp_level: "sf", match_number: 1 }),
     ]);
     expect(matches.map((m) => m.key)).toEqual(["qm1", "qm2", "sf1", "f1"]);
+  });
+});
+
+describe("mapVenue", () => {
+  it("maps TBA event location fields, preserving nulls", () => {
+    expect(
+      mapVenue({
+        name: "FMA District Montgomery Event",
+        location_name: "Montgomery Township High School",
+        address: "1016 Route 601",
+        city: "Skillman",
+        gmaps_url: null,
+        lat: null,
+        lng: null,
+      }),
+    ).toEqual({
+      name: "Montgomery Township High School",
+      address: "1016 Route 601",
+      city: "Skillman",
+      gmapsUrl: null,
+      lat: null,
+      lng: null,
+    });
+  });
+});
+
+describe("mapRankings", () => {
+  function entry(
+    team: number,
+    rank: number | null,
+    epa: number | null,
+  ): StatboticsTeamEvent {
+    return {
+      team,
+      team_name: `Team ${team}`,
+      epa: epa !== null ? { total_points: epa } : null,
+      record:
+        rank !== null
+          ? {
+              qual: {
+                wins: 5,
+                losses: 3,
+                ties: 0,
+                rps_per_match: 2.5,
+                rank,
+              },
+            }
+          : null,
+    };
+  }
+
+  it("sorts by qual rank ascending", () => {
+    const rows = mapRankings([entry(111, 3, 20), entry(222, 1, 50), entry(333, 2, 40)]);
+    expect(rows.map((r) => r.teamNumber)).toEqual([222, 333, 111]);
+    expect(rows[0]).toMatchObject({
+      rank: 1,
+      teamName: "Team 222",
+      wins: 5,
+      losses: 3,
+      ties: 0,
+      rpsPerMatch: 2.5,
+      epa: 50,
+    });
+  });
+
+  it("puts unranked teams last, ordered by EPA best-first", () => {
+    const rows = mapRankings([
+      entry(111, null, 30),
+      entry(222, 1, 50),
+      entry(333, null, 60),
+    ]);
+    expect(rows.map((r) => r.teamNumber)).toEqual([222, 333, 111]);
+    expect(rows[1].rank).toBeNull();
   });
 });

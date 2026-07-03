@@ -1,7 +1,9 @@
 import {
   mapMatches,
   mapTeams,
+  mapVenue,
   type StatboticsTeamEvent,
+  type TbaEvent,
   type TbaMatchSimple,
   type TbaTeamSimple,
 } from "@/lib/eventData";
@@ -60,7 +62,7 @@ export async function GET(
 
   try {
     const [event, tbaTeams, tbaMatches] = await Promise.all([
-      tbaFetch<{ name: string }>(`/event/${eventKey}`, tbaApiKey),
+      tbaFetch<TbaEvent>(`/event/${eventKey}`, tbaApiKey),
       tbaFetch<TbaTeamSimple[]>(`/event/${eventKey}/teams/simple`, tbaApiKey),
       tbaFetch<TbaMatchSimple[]>(`/event/${eventKey}/matches/simple`, tbaApiKey),
     ]);
@@ -83,6 +85,7 @@ export async function GET(
       eventName: event.name,
       teams: mapTeams(tbaTeams, statbotics),
       matches: mapMatches(tbaMatches),
+      venue: mapVenue(event),
     });
   } catch (err) {
     if (err instanceof HttpError) {

@@ -12,7 +12,10 @@ import { db } from "@/lib/firebase/client";
 import { MATCH_SCOUT_SECTIONS } from "@/lib/matchScoutSchema";
 import {
   moveItem,
+  moveToDoNotPick,
   reconcileOrder,
+  restoreFromDoNotPick,
+  splitDoNotPick,
   toggleStruck,
   type PicklistDoc,
 } from "@/lib/picklist";
@@ -80,10 +83,13 @@ export default function PicklistPage() {
     };
   }, [profile]);
 
-  const order = useMemo(
-    () => (event ? reconcileOrder(picklist?.order ?? [], event.teams) : []),
-    [event, picklist],
-  );
+  const { order, doNotPick } = useMemo(() => {
+    if (!event) return { order: [], doNotPick: [] };
+    return splitDoNotPick(
+      reconcileOrder(picklist?.order ?? [], event.teams),
+      picklist?.doNotPick ?? [],
+    );
+  }, [event, picklist]);
   const struck = useMemo(() => new Set(picklist?.struck ?? []), [picklist]);
 
   const teamsByNumber = useMemo(
@@ -100,13 +106,17 @@ export default function PicklistPage() {
 
   const isAdmin = profile?.role === "admin";
 
-  async function save(nextOrder: number[], nextStruck: number[]) {
+  async function save(
+    nextOrder: number[],
+    nextStruck: number[],
+    nextDoNotPick: number[],
+  ) {
     if (!profile) return;
     setSaveError(null);
     try {
       await setDoc(
         doc(db, "teams", profile.teamId, "config", "picklist"),
-        makePicklistDoc(nextOrder, nextStruck),
+        makePicklistDoc(nextOrder, nextStruck, nextDoNotPick),
       );
     } catch {
       setSaveError("Could not save the picklist — check your connection.");
@@ -114,7 +124,17 @@ export default function PicklistPage() {
   }
 
   function handleMove(from: number, to: number) {
-    void save(moveItem(order, from, to), [...struck]);
+    void save(moveItem(order, from, to), [...struck], [...doNotPick]);
+  }
+
+  function handleDoNotPick(team: number) {
+    const next = moveToDoNotPick(order, doNotPick, team);
+    void save(next.order, [...struck], next.doNotPick);
+  }
+
+  function handleRestore(team: number) {
+    const next = restoreFromDoNotPick(order, doNotPick, team);
+    void save(next.order, [...struck], next.doNotPick);
   }
 
   return (
@@ -188,7 +208,11 @@ export default function PicklistPage() {
                         type="button"
                         disabled={!isAdmin}
                         onClick={() =>
-                          void save([...order], toggleStruck([...struck], teamNumber))
+                          void save(
+                            [...order],
+                            toggleStruck([...struck], teamNumber),
+                            [...doNotPick],
+                          )
                         }
                         className={`font-stat font-semibold ${
                           isStruck ? "line-through" : ""
@@ -235,6 +259,15 @@ export default function PicklistPage() {
                           >
                             ↓
                           </button>
+                          <button
+                            type="button"
+                            aria-label={`Move ${teamNumber} to Do Not Pick`}
+                            onClick={() => handleDoNotPick(teamNumber)}
+                            className="rounded border border-maroon-200 px-2 py-1 text-xs font-medium text-maroon-700 transition hover:border-maroon-400"
+                            title="Move to Do Not Pick"
+                          >
+                            DNP
+                          </button>
                         </span>
                       </td>
                     )}
@@ -245,12 +278,88 @@ export default function PicklistPage() {
           </table>
         </div>
       )}
+
+      {event && (
+        <section className="flex flex-col gap-3">
+          <div>
+            <h2 className="text-lg font-semibold text-graphite-900">
+              Do Not Pick
+            </h2>
+            <p className="mt-0.5 text-sm text-graphite-500">
+              Teams your team has decided not to pick — kept out of the ranking
+              above.
+            </p>
+          </div>
+          {doNotPick.length === 0 ? (
+            <p className="rounded-lg border border-dashed border-graphite-300 bg-white px-4 py-6 text-center text-sm text-graphite-500">
+              No teams marked Do Not Pick.
+            </p>
+          ) : (
+            <div className="overflow-x-auto rounded-lg border border-maroon-200 bg-white">
+              <table className="w-full min-w-max text-left text-sm">
+                <thead>
+                  <tr className="border-b border-maroon-100 text-xs uppercase tracking-wider text-graphite-500">
+                    <th className="px-3 py-2.5">Team</th>
+                    <th className="px-3 py-2.5">Name</th>
+                    <th className="px-3 py-2.5">EPA</th>
+                    <th className="px-3 py-2.5">Avg auto</th>
+                    <th className="px-3 py-2.5">Avg teleop</th>
+                    <th className="px-3 py-2.5">Matches</th>
+                    {isAdmin && <th className="px-3 py-2.5" aria-label="Restore" />}
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-graphite-100">
+                  {doNotPick.map((teamNumber) => {
+                    const info = teamsByNumber.get(teamNumber);
+                    const agg = aggregates.get(String(teamNumber));
+                    const auto = phaseAvg(agg, AUTO_IDS);
+                    const teleop = phaseAvg(agg, TELEOP_IDS);
+                    return (
+                      <tr key={teamNumber} className="bg-maroon-50/40">
+                        <td className="font-stat px-3 py-2 font-semibold">
+                          {teamNumber}
+                        </td>
+                        <td className="px-3 py-2">{info?.nickname ?? "—"}</td>
+                        <td className="font-stat px-3 py-2">
+                          {info?.epa != null ? info.epa.toFixed(1) : "—"}
+                        </td>
+                        <td className="font-stat px-3 py-2">
+                          {auto !== null && agg ? auto.toFixed(1) : "—"}
+                        </td>
+                        <td className="font-stat px-3 py-2">
+                          {teleop !== null && agg ? teleop.toFixed(1) : "—"}
+                        </td>
+                        <td className="font-stat px-3 py-2">{agg?.matches ?? 0}</td>
+                        {isAdmin && (
+                          <td className="px-3 py-2">
+                            <button
+                              type="button"
+                              onClick={() => handleRestore(teamNumber)}
+                              className="rounded border border-graphite-200 px-2.5 py-1 text-xs font-medium text-graphite-600 transition hover:border-graphite-300"
+                            >
+                              Restore
+                            </button>
+                          </td>
+                        )}
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </section>
+      )}
     </main>
   );
 }
 
 // Module scope so the React compiler's purity rule doesn't treat the
 // Date.now() call as render-time work — save() only runs from handlers.
-function makePicklistDoc(order: number[], struck: number[]): PicklistDoc {
-  return { order, struck, updatedAt: Date.now() };
+function makePicklistDoc(
+  order: number[],
+  struck: number[],
+  doNotPick: number[],
+): PicklistDoc {
+  return { order, struck, doNotPick, updatedAt: Date.now() };
 }
