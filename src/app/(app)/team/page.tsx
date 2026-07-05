@@ -1,6 +1,13 @@
 "use client";
 
 import { useAuth } from "@/lib/auth/AuthProvider";
+import {
+  assignMatchScouts,
+  assignPitScouts,
+  type MatchAssignmentsDoc,
+  type PitAssignmentsDoc,
+} from "@/lib/assignments";
+import type { EventData } from "@/lib/eventData";
 import { db } from "@/lib/firebase/client";
 import type { Team, UserProfile } from "@/lib/types";
 import {
@@ -8,6 +15,7 @@ import {
   doc,
   onSnapshot,
   query,
+  setDoc,
   updateDoc,
   where,
 } from "firebase/firestore";
@@ -18,6 +26,10 @@ export default function TeamPage() {
   const [team, setTeam] = useState<Team | null>(null);
   const [roster, setRoster] = useState<UserProfile[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [event, setEvent] = useState<EventData | null>(null);
+  const [hasPitAssignments, setHasPitAssignments] = useState(false);
+  const [hasMatchAssignments, setHasMatchAssignments] = useState(false);
+  const [assignSuccess, setAssignSuccess] = useState<string | null>(null);
   const [showInvite, setShowInvite] = useState(false);
   const [inviteName, setInviteName] = useState("");
   const [inviteEmail, setInviteEmail] = useState("");
@@ -49,13 +61,100 @@ export default function TeamPage() {
             .sort((a, b) => a.fullName.localeCompare(b.fullName)),
         ),
     );
+    const unsubEvent = onSnapshot(doc(db, "teams", teamId, "config", "event"), (s) => {
+      setEvent(s.exists() ? (s.data() as EventData) : null);
+    });
+    const unsubPit = onSnapshot(
+      doc(db, "teams", teamId, "config", "pitAssignments"),
+      (s) => setHasPitAssignments(s.exists()),
+    );
+    const unsubMatch = onSnapshot(
+      doc(db, "teams", teamId, "config", "matchAssignments"),
+      (s) => setHasMatchAssignments(s.exists()),
+    );
     return () => {
       unsubTeam();
       unsubRoster();
+      unsubEvent();
+      unsubPit();
+      unsubMatch();
     };
   }, [profile]);
 
   const isAdmin = profile?.role === "admin";
+  const activeScouts = roster.filter((m) => m.role === "scout" && m.active);
+
+  function scoutNames(): Record<string, string> {
+    return Object.fromEntries(activeScouts.map((m) => [m.uid, m.fullName]));
+  }
+
+  async function handleAssignPit() {
+    if (!profile || !event) return;
+    if (
+      hasPitAssignments &&
+      !window.confirm(
+        "Pit scouting assignments already exist. Replace them with a fresh random assignment?",
+      )
+    ) {
+      return;
+    }
+    setError(null);
+    setAssignSuccess(null);
+    try {
+      const byScout = assignPitScouts(
+        event.teams.map((t) => t.teamNumber),
+        activeScouts.map((m) => m.uid),
+      );
+      const payload: PitAssignmentsDoc = {
+        byScout,
+        scoutNames: scoutNames(),
+        generatedAt: Date.now(),
+      };
+      await setDoc(
+        doc(db, "teams", profile.teamId, "config", "pitAssignments"),
+        payload,
+      );
+      setAssignSuccess(
+        `Pit scouting: ${event.teams.length} teams split across ${activeScouts.length} scouts — see the Assignments tab.`,
+      );
+    } catch {
+      setError("Could not save pit assignments — check your connection.");
+    }
+  }
+
+  async function handleAssignMatch() {
+    if (!profile || !event) return;
+    if (
+      hasMatchAssignments &&
+      !window.confirm(
+        "Match scouting assignments already exist. Replace them with a fresh random assignment?",
+      )
+    ) {
+      return;
+    }
+    setError(null);
+    setAssignSuccess(null);
+    try {
+      const slots = assignMatchScouts(
+        event.matches,
+        activeScouts.map((m) => m.uid),
+      );
+      const payload: MatchAssignmentsDoc = {
+        slots,
+        scoutNames: scoutNames(),
+        generatedAt: Date.now(),
+      };
+      await setDoc(
+        doc(db, "teams", profile.teamId, "config", "matchAssignments"),
+        payload,
+      );
+      setAssignSuccess(
+        `Match scouting: ${event.matches.length} matches covered by ${activeScouts.length} scouts — see the Assignments tab.`,
+      );
+    } catch {
+      setError("Could not save match assignments — check your connection.");
+    }
+  }
 
   async function handleInvite(e: React.FormEvent) {
     e.preventDefault();
@@ -119,6 +218,49 @@ export default function TeamPage() {
             : "Admin access is granted by promoting a user in the Firebase console."}
         </p>
       </div>
+
+      {isAdmin && (
+        <div className="flex flex-col gap-2 rounded-lg border border-graphite-200 bg-white p-4">
+          <p className="text-sm font-medium text-graphite-900">
+            Scouting assignments
+          </p>
+          <p className="text-xs text-graphite-500">
+            {event
+              ? `Randomly split the ${event.teams.length} event teams (pit) or all ${event.matches.length} matches (match) across the ${activeScouts.length} active scout${activeScouts.length === 1 ? "" : "s"}. Results appear in the Assignments tab.`
+              : "Sync an event on the Event tab first."}
+          </p>
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              disabled={!event || activeScouts.length === 0 || event.teams.length === 0}
+              onClick={() => void handleAssignPit()}
+              className="rounded-md bg-maroon-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-maroon-700 disabled:opacity-60"
+            >
+              Assign Pit Scout
+            </button>
+            <button
+              type="button"
+              disabled={!event || activeScouts.length === 0 || event.matches.length === 0}
+              onClick={() => void handleAssignMatch()}
+              className="rounded-md bg-maroon-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-maroon-700 disabled:opacity-60"
+            >
+              Assign Match Scout
+            </button>
+          </div>
+          {event && activeScouts.length === 0 && (
+            <p className="text-xs text-amber-700">
+              No active members with the scout role — add or reactivate scouts
+              below.
+            </p>
+          )}
+        </div>
+      )}
+
+      {assignSuccess && (
+        <p className="rounded-md bg-emerald-50 px-3 py-2 text-sm text-emerald-700">
+          {assignSuccess}
+        </p>
+      )}
 
       {isAdmin && (
         <div className="flex flex-col gap-3">

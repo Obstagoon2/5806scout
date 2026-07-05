@@ -20,7 +20,7 @@ export default function LoginPage() {
 
     try {
       await signInWithEmailAndPassword(auth, email, password);
-      router.replace("/pit-scout");
+      router.replace("/home");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Login failed");
     } finally {

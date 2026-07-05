@@ -82,3 +82,24 @@ body {
   color: var(--foreground);
   font-family: var(--font-sans), Arial, Helvetica, sans-serif;
 }
+
+/* Queuing alert — hard on/off flash (step-start, no fade) so it reads from
+   across a noisy pit. Applied by the Pit Dashboard when <5 min to queue. */
+@keyframes queue-blink {
+  0%,
+  49% {
+    background-color: #dc2626;
+    border-color: #dc2626;
+    color: #ffffff;
+  }
+  50%,
+  100% {
+    background-color: #ffffff;
+    border-color: #dc2626;
+    color: #dc2626;
+  }
+}
+
+.animate-queue-blink {
+  animation: queue-blink 1s step-start infinite;
+}

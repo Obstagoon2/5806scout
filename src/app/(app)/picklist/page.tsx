@@ -7,7 +7,7 @@ import {
   type MatchSubmission,
   type TeamAggregate,
 } from "@/lib/aggregate";
-import type { EventData } from "@/lib/eventData";
+import type { EventData, EventRankingRow } from "@/lib/eventData";
 import { db } from "@/lib/firebase/client";
 import { MATCH_SCOUT_SECTIONS } from "@/lib/matchScoutSchema";
 import {
@@ -43,6 +43,7 @@ export default function PicklistPage() {
   const [submissions, setSubmissions] = useState<MatchSubmission[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [eventRanks, setEventRanks] = useState<Map<number, number>>(new Map());
   const dragFrom = useRef<number | null>(null);
 
   useEffect(() => {
@@ -82,6 +83,38 @@ export default function PicklistPage() {
       unsubScouting();
     };
   }, [profile]);
+
+  // Official qual ranks (Statbotics via the rankings route), refreshed every
+  // minute like the Event tab's Ranking view. Missing data just renders "—".
+  useEffect(() => {
+    const eventKey = event?.eventKey;
+    if (!eventKey) return;
+    let cancelled = false;
+
+    async function load(key: string) {
+      try {
+        const res = await fetch(`/api/event/${encodeURIComponent(key)}/rankings`);
+        const body = (await res.json()) as { rankings?: EventRankingRow[] };
+        if (cancelled || !res.ok || !body.rankings) return;
+        setEventRanks(
+          new Map(
+            body.rankings
+              .filter((r) => r.rank !== null)
+              .map((r) => [r.teamNumber, r.rank as number]),
+          ),
+        );
+      } catch {
+        // Keep the last known ranks; the column is informational.
+      }
+    }
+
+    void load(eventKey);
+    const timer = setInterval(() => void load(eventKey), 60_000);
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+    };
+  }, [event?.eventKey]);
 
   const { order, doNotPick } = useMemo(() => {
     if (!event) return { order: [], doNotPick: [] };
@@ -138,12 +171,12 @@ export default function PicklistPage() {
   }
 
   return (
-    <main className="mx-auto flex w-full max-w-4xl flex-col gap-6 px-4 py-8 md:px-6">
+    <main className="flex w-full flex-col gap-6 px-4 py-8 md:px-6">
       <div>
         <h1 className="text-xl font-semibold text-graphite-900">Picklist</h1>
         <p className="mt-1 text-sm text-graphite-500">
           {isAdmin
-            ? "Drag rows (or use the arrows) to rank alliance picks. Tap the team number to strike it once picked."
+            ? "Drag rows (or use the arrows) to rank alliance picks. Tap the team number or name to strike it once picked."
             : "Live ranking maintained by your admin — updates in real time."}
         </p>
       </div>
@@ -169,6 +202,7 @@ export default function PicklistPage() {
                 <th className="px-3 py-2.5">Rank</th>
                 <th className="px-3 py-2.5">Team</th>
                 <th className="px-3 py-2.5">Name</th>
+                <th className="px-3 py-2.5">Event rank</th>
                 <th className="px-3 py-2.5">EPA</th>
                 <th className="px-3 py-2.5">Avg auto</th>
                 <th className="px-3 py-2.5">Avg teleop</th>
@@ -222,8 +256,27 @@ export default function PicklistPage() {
                         {teamNumber}
                       </button>
                     </td>
-                    <td className={`px-3 py-2 ${isStruck ? "line-through" : ""}`}>
-                      {info?.nickname ?? "—"}
+                    <td className="px-3 py-2">
+                      <button
+                        type="button"
+                        disabled={!isAdmin}
+                        onClick={() =>
+                          void save(
+                            [...order],
+                            toggleStruck([...struck], teamNumber),
+                            [...doNotPick],
+                          )
+                        }
+                        className={`text-left ${isStruck ? "line-through" : ""} ${
+                          isAdmin ? "hover:text-maroon-600" : ""
+                        }`}
+                        title={isAdmin ? "Toggle picked/unavailable" : undefined}
+                      >
+                        {info?.nickname ?? "—"}
+                      </button>
+                    </td>
+                    <td className="font-stat px-3 py-2">
+                      {eventRanks.get(teamNumber) ?? "—"}
                     </td>
                     <td className="font-stat px-3 py-2">
                       {info?.epa != null ? info.epa.toFixed(1) : "—"}

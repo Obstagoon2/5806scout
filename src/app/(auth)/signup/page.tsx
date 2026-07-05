@@ -68,7 +68,7 @@ export default function SignupPage() {
         createdAt: serverTimestamp(),
       });
 
-      router.replace("/pit-scout");
+      router.replace("/home");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Signup failed");
     } finally {

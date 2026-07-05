@@ -1,15 +1,22 @@
 "use client";
 
-import { NAV_ITEMS } from "@/lib/nav";
+import { useAuth } from "@/lib/auth/AuthProvider";
+import { NAV_ITEMS, type NavItem } from "@/lib/nav";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
+function useVisibleNavItems(): NavItem[] {
+  const { profile } = useAuth();
+  return NAV_ITEMS.filter((item) => !item.adminOnly || profile?.role === "admin");
+}
+
 export function DesktopTabs() {
   const pathname = usePathname();
+  const items = useVisibleNavItems();
 
   return (
     <nav className="hidden border-b border-graphite-200 bg-white px-6 md:flex">
-      {NAV_ITEMS.map((item) => {
+      {items.map((item) => {
         const active = pathname.startsWith(item.href);
         return (
           <Link
@@ -31,10 +38,11 @@ export function DesktopTabs() {
 
 export function MobileBottomNav() {
   const pathname = usePathname();
+  const items = useVisibleNavItems();
 
   return (
     <nav className="fixed inset-x-0 bottom-0 z-10 flex border-t border-graphite-200 bg-white md:hidden">
-      {NAV_ITEMS.map((item) => {
+      {items.map((item) => {
         const active = pathname.startsWith(item.href);
         return (
           <Link

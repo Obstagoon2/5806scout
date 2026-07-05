@@ -3,7 +3,7 @@
 import { useAuth } from "@/lib/auth/AuthProvider";
 import { db } from "@/lib/firebase/client";
 import {
-  canMarkDone,
+  confirmDoneFields,
   normalizeStatus,
   STATUS_LABELS,
   TALKIE_STATUSES,
@@ -25,7 +25,8 @@ import {
 } from "firebase/firestore";
 import { useEffect, useMemo, useState } from "react";
 
-type StatusFilter = TalkieStatus | "all";
+// "mine" = assigned to the signed-in user and not yet done.
+type StatusFilter = TalkieStatus | "all" | "mine";
 
 const inputClass =
   "w-full rounded-md border border-graphite-200 bg-white px-3 py-2 text-sm outline-none transition focus:border-maroon-400 focus:ring-2 focus:ring-maroon-100";
@@ -73,6 +74,14 @@ export default function TalkiePage() {
               assigneeUid: (data.assigneeUid as string | null) ?? null,
               assigneeName: (data.assigneeName as string | null) ?? null,
               result: (data.result as string) ?? "",
+              // Pre-dual-sign-off docs lack the flags; a legacy "done" doc
+              // counts as fully signed off so it stays in the Done tab.
+              doneByAdmin:
+                (data.doneByAdmin as boolean | undefined) ??
+                normalizeStatus(data.status) === "done",
+              doneByUser:
+                (data.doneByUser as boolean | undefined) ??
+                normalizeStatus(data.status) === "done",
               createdAtMs: createdAt ? createdAt.toMillis() : Date.now(),
             };
           }),
@@ -101,9 +110,21 @@ export default function TalkiePage() {
     };
   }, [profile]);
 
-  const filtered = useMemo(
-    () => (filter === "all" ? requests : requests.filter((r) => r.status === filter)),
-    [requests, filter],
+  const filtered = useMemo(() => {
+    if (filter === "all") return requests;
+    if (filter === "mine") {
+      return requests.filter(
+        (r) => r.assigneeUid === user?.uid && r.status !== "done",
+      );
+    }
+    return requests.filter((r) => r.status === filter);
+  }, [requests, filter, user?.uid]);
+
+  const mineCount = useMemo(
+    () =>
+      requests.filter((r) => r.assigneeUid === user?.uid && r.status !== "done")
+        .length,
+    [requests, user?.uid],
   );
 
   const openCount = requests.filter((r) => r.status !== "done").length;
@@ -124,6 +145,8 @@ export default function TalkiePage() {
         assigneeUid: null,
         assigneeName: null,
         result: "",
+        doneByAdmin: false,
+        doneByUser: false,
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
       });
@@ -160,8 +183,10 @@ export default function TalkiePage() {
       // (see AssignmentNotifications); dismissing sets it back to true.
       assigneeSeen: !member,
       // Assignment moves an open request forward; clearing it reopens.
+      // Changing hands also voids any user-side done sign-off — the new
+      // assignee has to confirm for themselves.
       ...(request.status !== "done"
-        ? { status: member ? "assigned" : "open" }
+        ? { status: member ? "assigned" : "open", doneByUser: false }
         : {}),
     });
   }
@@ -215,8 +240,8 @@ export default function TalkiePage() {
         </p>
       )}
 
-      <div className="flex w-fit rounded-md border border-graphite-200 bg-white p-0.5">
-        {(["all", ...TALKIE_STATUSES] as const).map((s) => (
+      <div className="flex w-fit flex-wrap rounded-md border border-graphite-200 bg-white p-0.5">
+        {(["all", "mine", ...TALKIE_STATUSES] as const).map((s) => (
           <button
             key={s}
             type="button"
@@ -227,7 +252,11 @@ export default function TalkiePage() {
                 : "text-graphite-600 hover:text-graphite-900"
             }`}
           >
-            {s === "all" ? "All" : STATUS_LABELS[s]}
+            {s === "all"
+              ? "All"
+              : s === "mine"
+                ? `Assigned to you${mineCount > 0 ? ` (${mineCount})` : ""}`
+                : STATUS_LABELS[s]}
           </button>
         ))}
       </div>
@@ -236,8 +265,12 @@ export default function TalkiePage() {
         {filtered.map((request) => {
           const expanded = expandedId === request.id;
           const draft = resultDrafts[request.id] ?? request.result;
-          const showMarkDone =
-            !!user && canMarkDone(request, user.uid, isAdmin);
+          const doneFields = user
+            ? confirmDoneFields(request, user.uid, isAdmin)
+            : null;
+          const awaitingOther =
+            request.status !== "done" &&
+            (request.doneByAdmin || request.doneByUser);
           return (
             <li
               key={request.id}
@@ -309,14 +342,40 @@ export default function TalkiePage() {
                 )}
               </div>
 
-              {showMarkDone && (
-                <button
-                  type="button"
-                  onClick={() => void patch(request.id, { status: "done" })}
-                  className="self-start rounded-md bg-green-600 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-green-700"
-                >
-                  Mark as Done
-                </button>
+              {(doneFields || awaitingOther) && (
+                <div className="flex flex-wrap items-center gap-2">
+                  {doneFields && (
+                    <button
+                      type="button"
+                      // A user-side sign-off that still needs the admin's
+                      // flips adminConfirmSeen so admins get the dashboard
+                      // banner (see AssignmentNotifications); dismissing
+                      // sets it back to true.
+                      onClick={() =>
+                        void patch(
+                          request.id,
+                          doneFields.doneByUser && !doneFields.doneByAdmin
+                            ? { ...doneFields, adminConfirmSeen: false }
+                            : doneFields,
+                        )
+                      }
+                      className="rounded-md bg-green-600 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-green-700"
+                    >
+                      Mark as Done
+                    </button>
+                  )}
+                  {awaitingOther && (
+                    <span className="rounded bg-amber-100 px-2 py-1 text-xs font-medium text-amber-900">
+                      {request.doneByAdmin
+                        ? `Waiting for ${
+                            request.assigneeName ??
+                            request.createdByName ??
+                            "the scout"
+                          } to confirm`
+                        : "Waiting for an admin to confirm"}
+                    </span>
+                  )}
+                </div>
               )}
 
               {expanded && (
@@ -355,7 +414,9 @@ export default function TalkiePage() {
           <li className="rounded-lg border border-dashed border-graphite-300 bg-white px-6 py-10 text-center text-sm text-graphite-500">
             {requests.length === 0
               ? "No requests yet — post the first one above."
-              : "Nothing with this status."}
+              : filter === "mine"
+                ? "Nothing assigned to you right now."
+                : "Nothing with this status."}
           </li>
         )}
       </ul>
