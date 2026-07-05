@@ -61,8 +61,25 @@ service cloud.firestore {
       // team number if it doesn't exist yet (first signup for a new team).
       allow create: if isSignedIn() && !exists(/databases/$(database)/documents/teams/$(teamId));
 
-      allow read: if isSameTeam(teamId);
-      allow update: if isAdminOfTeam(teamId);
+      // Single-doc reads are public (no sensitive data — teamNumber/teamName/
+      // adminUid) so the signup form can check "does this team already have
+      // an admin?" before the visitor is signed in. Listing the collection
+      // still requires membership.
+      allow get: if true;
+      allow list: if isSameTeam(teamId);
+
+      // Normal team-doc edits are admin-only. The one exception: a brand new
+      // user may claim the team's single admin slot for themselves — but
+      // only if nobody has claimed it yet, and only that one field changes.
+      // This is what lets signup (src/app/(auth)/signup/page.tsx) enforce
+      // "one admin per team" at the database layer, not just in the UI.
+      allow update: if isAdminOfTeam(teamId)
+        || (
+          isSignedIn()
+          && request.auth.uid == request.resource.data.adminUid
+          && !("adminUid" in resource.data)
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(["adminUid"])
+        );
       allow delete: if false;
 
       // Subcollections (pit scout, match scout, etc.) inherit team scoping.

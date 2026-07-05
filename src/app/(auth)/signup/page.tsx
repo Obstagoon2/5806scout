@@ -2,7 +2,7 @@
 
 import { auth, db } from "@/lib/firebase/client";
 import { createUserWithEmailAndPassword, updateProfile } from "firebase/auth";
-import { doc, serverTimestamp, setDoc } from "firebase/firestore";
+import { FirestoreError, doc, getDoc, runTransaction, serverTimestamp } from "firebase/firestore";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
@@ -17,6 +17,8 @@ export default function SignupPage() {
   const [adminCode, setAdminCode] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+
+  const ADMIN_EXISTS_MESSAGE = "A team member has already registered your team";
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -42,31 +44,63 @@ export default function SignupPage() {
       }
 
       const teamId = teamNumber.trim();
+      const teamRef = doc(db, "teams", teamId);
+
+      // Fast pre-check (allowed pre-auth by firestore.rules — team docs are
+      // publicly gettable): most rejections happen here, before we ever
+      // create a Firebase Auth account.
+      if (asAdmin) {
+        const existingTeam = await getDoc(teamRef);
+        if (existingTeam.exists() && existingTeam.data().adminUid) {
+          setError(ADMIN_EXISTS_MESSAGE);
+          return;
+        }
+      }
+
       const credential = await createUserWithEmailAndPassword(auth, email, password);
       await updateProfile(credential.user, { displayName: fullName });
+      const userRef = doc(db, "users", credential.user.uid);
 
-      // Bootstrap the team doc (idempotent per firestore.rules: only
-      // created if it doesn't already exist).
-      await setDoc(
-        doc(db, "teams", teamId),
-        {
-          teamNumber: teamId,
-          teamName: teamId,
-          createdAt: serverTimestamp(),
-        },
-        { merge: false },
-      ).catch(() => {
-        // Team already exists — expected for the 2nd+ scout on a team.
-      });
+      try {
+        // Transaction closes the race between the pre-check above and two
+        // admins signing up for the same team at nearly the same time: the
+        // security rules only let the *first* writer set teams/{id}.adminUid.
+        await runTransaction(db, async (tx) => {
+          const teamSnap = await tx.get(teamRef);
+          if (asAdmin && teamSnap.exists() && teamSnap.data().adminUid) {
+            throw new Error(ADMIN_EXISTS_MESSAGE);
+          }
 
-      await setDoc(doc(db, "users", credential.user.uid), {
-        email,
-        fullName,
-        teamId,
-        role: asAdmin ? "admin" : "scout",
-        active: true,
-        createdAt: serverTimestamp(),
-      });
+          if (!teamSnap.exists()) {
+            tx.set(teamRef, {
+              teamNumber: teamId,
+              teamName: teamId,
+              createdAt: serverTimestamp(),
+              ...(asAdmin ? { adminUid: credential.user.uid } : {}),
+            });
+          } else if (asAdmin) {
+            tx.update(teamRef, { adminUid: credential.user.uid });
+          }
+
+          tx.set(userRef, {
+            email,
+            fullName,
+            teamId,
+            role: asAdmin ? "admin" : "scout",
+            active: true,
+            createdAt: serverTimestamp(),
+          });
+        });
+      } catch (txErr) {
+        // Roll back the auth account we just created — otherwise the
+        // rejected admin can never sign up again with this email.
+        await credential.user.delete().catch(() => {});
+        const isAdminExists =
+          (txErr instanceof Error && txErr.message === ADMIN_EXISTS_MESSAGE) ||
+          (txErr instanceof FirestoreError && txErr.code === "permission-denied");
+        setError(isAdminExists ? ADMIN_EXISTS_MESSAGE : "Signup failed");
+        return;
+      }
 
       router.replace("/home");
     } catch (err) {

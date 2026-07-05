@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useAuth } from "@/lib/auth/AuthProvider";
 import { auth } from "@/lib/firebase/client";
 import { signOut } from "firebase/auth";
@@ -9,12 +10,12 @@ export function AppHeader() {
 
   return (
     <header className="flex items-center justify-between border-b border-graphite-200 bg-maroon-700 px-4 py-3 text-white md:px-6">
-      <div className="flex items-baseline gap-2">
+      <Link href="/home" className="flex items-baseline gap-2">
         <span className="font-semibold tracking-tight">FRC Scouting</span>
         {profile && (
           <span className="font-stat text-sm text-maroon-100">#{profile.teamId}</span>
         )}
-      </div>
+      </Link>
 
       {profile && (
         <div className="flex items-center gap-3 text-sm">

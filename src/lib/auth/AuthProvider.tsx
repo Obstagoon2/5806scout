@@ -3,7 +3,7 @@
 import { auth, db } from "@/lib/firebase/client";
 import type { UserProfile } from "@/lib/types";
 import { type User, onAuthStateChanged } from "firebase/auth";
-import { doc, onSnapshot } from "firebase/firestore";
+import { doc, getDoc, onSnapshot, updateDoc } from "firebase/firestore";
 import { createContext, useContext, useEffect, useState } from "react";
 
 interface AuthState {
@@ -42,6 +42,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setProfileLoading(false);
     });
   }, [user]);
+
+  useEffect(() => {
+    // Self-heal: teams created before the one-admin-per-team feature shipped
+    // never got teams/{teamId}.adminUid backfilled. The rules let any admin
+    // freely edit their own team doc, so the first admin to load the app
+    // after this ships claims the slot retroactively — closing the gap that
+    // let a second admin sign up for teams the app didn't know had one yet.
+    if (!user || !profile || profile.role !== "admin") return;
+
+    const teamRef = doc(db, "teams", profile.teamId);
+    void getDoc(teamRef).then((snap) => {
+      if (snap.exists() && !snap.data().adminUid) {
+        void updateDoc(teamRef, { adminUid: user.uid }).catch(() => {});
+      }
+    });
+  }, [user, profile]);
 
   const loading = authLoading || profileLoading;
 
