@@ -1,6 +1,7 @@
 "use client";
 
 import { useAuth } from "@/lib/auth/AuthProvider";
+import { authedFetch } from "@/lib/authFetch";
 import type { EventData, EventMatch } from "@/lib/eventData";
 import { db } from "@/lib/firebase/client";
 import {
@@ -65,7 +66,7 @@ export default function PitDashboardPage() {
 
     async function load(eventKey: string) {
       try {
-        const res = await fetch(`/api/event/${encodeURIComponent(eventKey)}/live`);
+        const res = await authedFetch(`/api/event/${encodeURIComponent(eventKey)}/live`);
         const body = (await res.json()) as LiveResponse;
         if (cancelled) return;
         if (!res.ok || !body.matches) {

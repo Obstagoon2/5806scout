@@ -1,3 +1,4 @@
+import { AuthError, requireUid } from "@/lib/auth/verifyBearerToken";
 import {
   mapRankings,
   type StatboticsTeamEvent,
@@ -10,9 +11,20 @@ const STATBOTICS_BASE = "https://api.statbotics.io/v3";
 // event sync, because ranks churn constantly during quals.
 
 export async function GET(
-  _req: Request,
+  req: Request,
   { params }: { params: Promise<{ eventKey: string }> },
 ): Promise<Response> {
+  // Statbotics is keyless, but still require a signed-in account so this
+  // route can't be scripted as an open, anonymous proxy.
+  try {
+    await requireUid(req);
+  } catch (err) {
+    if (err instanceof AuthError) {
+      return Response.json({ error: err.message }, { status: err.status });
+    }
+    throw err;
+  }
+
   const { eventKey } = await params;
 
   if (!/^[a-z0-9]+$/i.test(eventKey)) {

@@ -27,7 +27,14 @@ export default function LoginPage() {
       await signInWithEmailAndPassword(auth, email, password);
       router.replace("/home");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Login failed");
+      // Always a generic message, regardless of the underlying Firebase auth
+      // code (wrong password vs. no such account) — this is the same
+      // enumeration protection the forgot-password form below applies.
+      setError(
+        err instanceof FirebaseError
+          ? "Invalid email or password."
+          : "Login failed. Please try again.",
+      );
     } finally {
       setSubmitting(false);
     }

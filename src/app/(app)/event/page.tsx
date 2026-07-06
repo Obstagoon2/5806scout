@@ -1,6 +1,7 @@
 "use client";
 
 import { useAuth } from "@/lib/auth/AuthProvider";
+import { authedFetch } from "@/lib/authFetch";
 import type { EventData, EventRankingRow } from "@/lib/eventData";
 import { db } from "@/lib/firebase/client";
 import { doc, onSnapshot, setDoc } from "firebase/firestore";
@@ -49,7 +50,7 @@ export default function EventPage() {
 
     setStatus({ state: "syncing" });
     try {
-      const res = await fetch(`/api/event/${encodeURIComponent(key)}`);
+      const res = await authedFetch(`/api/event/${encodeURIComponent(key)}`);
       const body = (await res.json()) as EventData & { error?: string };
       if (!res.ok) {
         setStatus({
@@ -361,7 +362,7 @@ function RankingTable({ eventKey, myTeam }: { eventKey: string; myTeam: string }
 
     async function load() {
       try {
-        const res = await fetch(
+        const res = await authedFetch(
           `/api/event/${encodeURIComponent(eventKey)}/rankings`,
         );
         const body = (await res.json()) as {

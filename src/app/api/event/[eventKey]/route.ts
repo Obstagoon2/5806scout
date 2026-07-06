@@ -1,3 +1,4 @@
+import { AuthError, requireUid } from "@/lib/auth/verifyBearerToken";
 import {
   mapMatches,
   mapTeams,
@@ -40,9 +41,20 @@ async function tbaFetch<T>(path: string, apiKey: string): Promise<T> {
 }
 
 export async function GET(
-  _req: Request,
+  req: Request,
   { params }: { params: Promise<{ eventKey: string }> },
 ): Promise<Response> {
+  // Every call spends the app's TBA rate-limit budget — require a signed-in
+  // account so a random visitor can't burn through it.
+  try {
+    await requireUid(req);
+  } catch (err) {
+    if (err instanceof AuthError) {
+      return Response.json({ error: err.message }, { status: err.status });
+    }
+    throw err;
+  }
+
   const { eventKey } = await params;
   const { tbaApiKey } = getServerConfig();
 

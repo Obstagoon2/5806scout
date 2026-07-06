@@ -1,5 +1,6 @@
 import Anthropic from "@anthropic-ai/sdk";
 import manualChunksJson from "@/data/manual-chunks.json";
+import { AuthError, requireUid } from "@/lib/auth/verifyBearerToken";
 import { rankChunks, type ManualChunk } from "@/lib/manual";
 import { getServerConfig } from "@/lib/serverConfig";
 
@@ -23,6 +24,17 @@ export async function GET(): Promise<Response> {
 }
 
 export async function POST(req: Request): Promise<Response> {
+  // Every call spends real Anthropic API budget — require a signed-in
+  // account so a random visitor can't run up the bill.
+  try {
+    await requireUid(req);
+  } catch (err) {
+    if (err instanceof AuthError) {
+      return Response.json({ error: err.message }, { status: err.status });
+    }
+    throw err;
+  }
+
   const { anthropicApiKey, manualQaModel } = getServerConfig();
   if (!anthropicApiKey) {
     return Response.json(

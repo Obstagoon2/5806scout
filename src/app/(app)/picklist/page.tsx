@@ -7,6 +7,7 @@ import {
   type MatchSubmission,
   type TeamAggregate,
 } from "@/lib/aggregate";
+import { authedFetch } from "@/lib/authFetch";
 import type { EventData, EventRankingRow } from "@/lib/eventData";
 import { db } from "@/lib/firebase/client";
 import { MATCH_SCOUT_SECTIONS } from "@/lib/matchScoutSchema";
@@ -93,7 +94,7 @@ export default function PicklistPage() {
 
     async function load(key: string) {
       try {
-        const res = await fetch(`/api/event/${encodeURIComponent(key)}/rankings`);
+        const res = await authedFetch(`/api/event/${encodeURIComponent(key)}/rankings`);
         const body = (await res.json()) as { rankings?: EventRankingRow[] };
         if (cancelled || !res.ok || !body.rankings) return;
         setEventRanks(
