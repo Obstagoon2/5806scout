@@ -1,7 +1,8 @@
 "use client";
 
 import { auth, db } from "@/lib/firebase/client";
-import type { UserProfile } from "@/lib/types";
+import { canonicalDataTeamId } from "@/lib/sisterTeam";
+import type { Team, UserProfile } from "@/lib/types";
 import { type User, onAuthStateChanged } from "firebase/auth";
 import { doc, getDoc, onSnapshot, updateDoc } from "firebase/firestore";
 import { createContext, useContext, useEffect, useState } from "react";
@@ -9,6 +10,15 @@ import { createContext, useContext, useEffect, useState } from "react";
 interface AuthState {
   user: User | null;
   profile: UserProfile | null;
+  /** Own team doc, including sister-link fields. Null until loaded. */
+  team: Team | null;
+  /**
+   * Where shared scouting data lives: the canonical store for a linked
+   * sister pair (see src/lib/sisterTeam.ts), or the team's own id when
+   * unlinked. Null until the profile and team doc resolve. The picklist is
+   * the one thing that must keep using profile.teamId instead.
+   */
+  dataTeamId: string | null;
   loading: boolean;
 }
 
@@ -17,6 +27,12 @@ const AuthContext = createContext<AuthState | undefined>(undefined);
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [profile, setProfile] = useState<UserProfile | null>(null);
+  // Tagged with the teamId it came from so a stale snapshot (after switching
+  // accounts) is ignored at render time instead of reset via effect.
+  const [teamState, setTeamState] = useState<{
+    teamId: string;
+    team: Team | null;
+  } | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
   const [profileLoading, setProfileLoading] = useState(true);
 
@@ -43,6 +59,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     });
   }, [user]);
 
+  // The team doc rides along with the profile so every page knows the
+  // sister-link state (and therefore where shared data lives) without its
+  // own subscription.
+  useEffect(() => {
+    const teamId = profile?.teamId;
+    if (!teamId) return;
+    return onSnapshot(doc(db, "teams", teamId), (snapshot) => {
+      setTeamState({
+        teamId,
+        team: snapshot.exists() ? (snapshot.data() as Team) : null,
+      });
+    });
+  }, [profile?.teamId]);
+
   useEffect(() => {
     // Self-heal: teams created before the one-admin-per-team feature shipped
     // never got teams/{teamId}.adminUid backfilled. The rules let any admin
@@ -59,10 +89,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     });
   }, [user, profile]);
 
-  const loading = authLoading || profileLoading;
+  const teamLoaded = !profile || teamState?.teamId === profile.teamId;
+  const team = profile && teamLoaded ? (teamState?.team ?? null) : null;
+  const loading = authLoading || profileLoading || !teamLoaded;
+  const dataTeamId = profile
+    ? canonicalDataTeamId(profile.teamId, team?.sisterTeamId)
+    : null;
 
   return (
-    <AuthContext.Provider value={{ user, profile, loading }}>
+    <AuthContext.Provider value={{ user, profile, team, dataTeamId, loading }}>
       {children}
     </AuthContext.Provider>
   );

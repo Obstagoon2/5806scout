@@ -9,7 +9,12 @@ import {
 } from "@/lib/assignments";
 import type { EventData } from "@/lib/eventData";
 import { db } from "@/lib/firebase/client";
-import type { Team, UserProfile } from "@/lib/types";
+import {
+  createSisterInvite,
+  redeemSisterInvite,
+  unlinkSisterTeam,
+} from "@/lib/sisterTeamOps";
+import type { UserProfile } from "@/lib/types";
 import {
   collection,
   doc,
@@ -22,8 +27,7 @@ import {
 import { useEffect, useState } from "react";
 
 export default function TeamPage() {
-  const { profile, user } = useAuth();
-  const [team, setTeam] = useState<Team | null>(null);
+  const { profile, user, team, dataTeamId } = useAuth();
   const [roster, setRoster] = useState<UserProfile[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [event, setEvent] = useState<EventData | null>(null);
@@ -35,19 +39,26 @@ export default function TeamPage() {
   const [inviteEmail, setInviteEmail] = useState("");
   const [inviteSending, setInviteSending] = useState(false);
   const [inviteSuccess, setInviteSuccess] = useState<string | null>(null);
+  const [linkCode, setLinkCode] = useState<string | null>(null);
+  const [codeInput, setCodeInput] = useState("");
+  const [linkBusy, setLinkBusy] = useState(false);
+  const [linkMessage, setLinkMessage] = useState<string | null>(null);
 
+  // Roster pools both teams when a sister team is linked, so assignments
+  // split the work across every active scout in the pair.
   useEffect(() => {
     if (!profile) return;
-    const teamId = profile.teamId;
-    const unsubTeam = onSnapshot(doc(db, "teams", teamId), (s) => {
-      setTeam(s.exists() ? (s.data() as Team) : null);
-    });
-    const unsubRoster = onSnapshot(
-      query(collection(db, "users"), where("teamId", "==", teamId)),
-      (snapshot) =>
-        setRoster(
-          snapshot.docs
-            .map((d) => {
+    const teamIds = [profile.teamId, team?.sisterTeamId].filter(
+      (id): id is string => !!id,
+    );
+    const byTeam = new Map<string, UserProfile[]>();
+    const unsubs = teamIds.map((teamId) =>
+      onSnapshot(
+        query(collection(db, "users"), where("teamId", "==", teamId)),
+        (snapshot) => {
+          byTeam.set(
+            teamId,
+            snapshot.docs.map((d) => {
               const data = d.data();
               return {
                 uid: d.id,
@@ -57,29 +68,42 @@ export default function TeamPage() {
                 role: (data.role as UserProfile["role"]) ?? "scout",
                 active: (data.active as boolean) ?? true,
               };
-            })
-            .sort((a, b) => a.fullName.localeCompare(b.fullName)),
-        ),
+            }),
+          );
+          setRoster(
+            teamIds
+              .flatMap((id) => byTeam.get(id) ?? [])
+              .sort((a, b) => a.fullName.localeCompare(b.fullName)),
+          );
+        },
+      ),
     );
-    const unsubEvent = onSnapshot(doc(db, "teams", teamId, "config", "event"), (s) => {
-      setEvent(s.exists() ? (s.data() as EventData) : null);
-    });
+    return () => unsubs.forEach((unsub) => unsub());
+  }, [profile, team?.sisterTeamId]);
+
+  // Event + assignment docs live in the shared store.
+  useEffect(() => {
+    if (!dataTeamId) return;
+    const unsubEvent = onSnapshot(
+      doc(db, "teams", dataTeamId, "config", "event"),
+      (s) => {
+        setEvent(s.exists() ? (s.data() as EventData) : null);
+      },
+    );
     const unsubPit = onSnapshot(
-      doc(db, "teams", teamId, "config", "pitAssignments"),
+      doc(db, "teams", dataTeamId, "config", "pitAssignments"),
       (s) => setHasPitAssignments(s.exists()),
     );
     const unsubMatch = onSnapshot(
-      doc(db, "teams", teamId, "config", "matchAssignments"),
+      doc(db, "teams", dataTeamId, "config", "matchAssignments"),
       (s) => setHasMatchAssignments(s.exists()),
     );
     return () => {
-      unsubTeam();
-      unsubRoster();
       unsubEvent();
       unsubPit();
       unsubMatch();
     };
-  }, [profile]);
+  }, [dataTeamId]);
 
   const isAdmin = profile?.role === "admin";
   const activeScouts = roster.filter((m) => m.role === "scout" && m.active);
@@ -89,7 +113,7 @@ export default function TeamPage() {
   }
 
   async function handleAssignPit() {
-    if (!profile || !event) return;
+    if (!profile || !event || !dataTeamId) return;
     if (
       hasPitAssignments &&
       !window.confirm(
@@ -111,7 +135,7 @@ export default function TeamPage() {
         generatedAt: Date.now(),
       };
       await setDoc(
-        doc(db, "teams", profile.teamId, "config", "pitAssignments"),
+        doc(db, "teams", dataTeamId, "config", "pitAssignments"),
         payload,
       );
       setAssignSuccess(
@@ -123,7 +147,7 @@ export default function TeamPage() {
   }
 
   async function handleAssignMatch() {
-    if (!profile || !event) return;
+    if (!profile || !event || !dataTeamId) return;
     if (
       hasMatchAssignments &&
       !window.confirm(
@@ -145,7 +169,7 @@ export default function TeamPage() {
         generatedAt: Date.now(),
       };
       await setDoc(
-        doc(db, "teams", profile.teamId, "config", "matchAssignments"),
+        doc(db, "teams", dataTeamId, "config", "matchAssignments"),
         payload,
       );
       setAssignSuccess(
@@ -189,6 +213,70 @@ export default function TeamPage() {
       setError("Could not send the invite — check your connection.");
     } finally {
       setInviteSending(false);
+    }
+  }
+
+  async function handleGenerateCode() {
+    if (!profile || !user || !team) return;
+    setError(null);
+    setLinkMessage(null);
+    setLinkBusy(true);
+    try {
+      setLinkCode(
+        await createSisterInvite({ teamId: profile.teamId, team, uid: user.uid }),
+      );
+    } catch {
+      setError("Could not create a link code — check your connection.");
+    } finally {
+      setLinkBusy(false);
+    }
+  }
+
+  async function handleRedeem(e: React.FormEvent) {
+    e.preventDefault();
+    if (!profile || !team) return;
+    setError(null);
+    setLinkMessage(null);
+    setLinkBusy(true);
+    try {
+      await redeemSisterInvite({
+        code: codeInput,
+        myTeamId: profile.teamId,
+        myTeam: team,
+      });
+      setCodeInput("");
+      setLinkCode(null);
+      setLinkMessage(
+        "Linked! Both teams now share scouting data, assignments, and the event.",
+      );
+    } catch (err) {
+      setError(
+        err instanceof Error ? err.message : "Could not link — try again.",
+      );
+    } finally {
+      setLinkBusy(false);
+    }
+  }
+
+  async function handleUnlink() {
+    if (!profile || !team?.sisterTeamId) return;
+    if (
+      !window.confirm(
+        `Unlink from Team ${team.sisterTeamNumber}? Both teams keep a full copy of the shared scouting data; picklists were never shared.`,
+      )
+    ) {
+      return;
+    }
+    setError(null);
+    setLinkMessage(null);
+    setLinkBusy(true);
+    try {
+      await unlinkSisterTeam({ myTeamId: profile.teamId, myTeam: team });
+      setLinkMessage("Unlinked — each team keeps its own copy of the data.");
+    } catch {
+      setError("Could not unlink — check your connection.");
+    } finally {
+      setLinkBusy(false);
     }
   }
 
@@ -260,6 +348,80 @@ export default function TeamPage() {
         <p className="rounded-md bg-emerald-50 px-3 py-2 text-sm text-emerald-700">
           {assignSuccess}
         </p>
+      )}
+
+      {isAdmin && (
+        <div className="flex flex-col gap-2 rounded-lg border border-graphite-200 bg-white p-4">
+          <p className="text-sm font-medium text-graphite-900">Sister team</p>
+          {team?.sisterTeamId ? (
+            <>
+              <p className="text-xs text-graphite-500">
+                Linked with Team {team.sisterTeamNumber}
+                {team.sisterTeamName &&
+                team.sisterTeamName !== team.sisterTeamNumber
+                  ? ` — ${team.sisterTeamName}`
+                  : ""}
+                . Both teams share scouting data, assignments, talkie, and the
+                synced event; each team keeps its own picklist and Do Not Pick
+                list.
+              </p>
+              <button
+                type="button"
+                disabled={linkBusy}
+                onClick={() => void handleUnlink()}
+                className="self-start rounded-md border border-maroon-200 px-4 py-2 text-sm font-medium text-maroon-700 transition hover:border-maroon-400 disabled:opacity-60"
+              >
+                {linkBusy ? "Unlinking…" : "Unlink sister team"}
+              </button>
+            </>
+          ) : (
+            <>
+              <p className="text-xs text-graphite-500">
+                Pair up with your sister team to share all scouting data and
+                split the collection work — picklists stay separate. One
+                team&apos;s admin generates a code; the other enters it here.
+              </p>
+              {linkCode ? (
+                <p className="rounded-md bg-graphite-50 px-3 py-2 text-sm text-graphite-700">
+                  Share this code with their admin (valid for 24 hours):{" "}
+                  <span className="font-stat text-lg font-bold tracking-widest text-graphite-900">
+                    {linkCode}
+                  </span>
+                </p>
+              ) : (
+                <button
+                  type="button"
+                  disabled={linkBusy}
+                  onClick={() => void handleGenerateCode()}
+                  className="self-start rounded-md bg-maroon-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-maroon-700 disabled:opacity-60"
+                >
+                  Generate link code
+                </button>
+              )}
+              <form onSubmit={handleRedeem} className="flex items-center gap-2">
+                <input
+                  type="text"
+                  placeholder="Code from your sister team"
+                  value={codeInput}
+                  onChange={(e) => setCodeInput(e.target.value)}
+                  className="font-stat w-56 rounded-md border border-graphite-200 bg-white px-3 py-2 text-sm uppercase tracking-widest outline-none transition focus:border-maroon-400 focus:ring-2 focus:ring-maroon-100"
+                />
+                <button
+                  type="submit"
+                  disabled={linkBusy || !codeInput.trim()}
+                  className="rounded-md bg-maroon-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-maroon-700 disabled:opacity-60"
+                >
+                  {linkBusy ? "Linking…" : "Link"}
+                </button>
+              </form>
+            </>
+          )}
+          {linkMessage && (
+            <p className="rounded-md bg-emerald-50 px-3 py-2 text-sm text-emerald-700">
+              {linkMessage}
+            </p>
+          )}
+        </div>
       )}
 
       {isAdmin && (
@@ -361,6 +523,11 @@ export default function TeamPage() {
               <p className="text-xs text-graphite-500">{member.email}</p>
             </div>
             <div className="flex items-center gap-2">
+              {member.teamId !== profile?.teamId && (
+                <span className="rounded bg-sky-50 px-1.5 py-0.5 text-xs font-semibold text-sky-700">
+                  {team?.sisterTeamNumber ?? member.teamId}
+                </span>
+              )}
               <span
                 className={`rounded px-1.5 py-0.5 text-xs font-semibold ${
                   member.role === "admin"
@@ -375,7 +542,7 @@ export default function TeamPage() {
                   inactive
                 </span>
               )}
-              {isAdmin && member.uid !== user?.uid && (
+              {isAdmin && member.uid !== user?.uid && member.teamId === profile?.teamId && (
                 <button
                   type="button"
                   onClick={() => void toggleActive(member)}

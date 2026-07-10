@@ -24,7 +24,7 @@ const inputClass =
   "font-stat w-44 rounded-md border border-graphite-200 bg-white px-3 py-2 text-sm outline-none transition focus:border-maroon-400 focus:ring-2 focus:ring-maroon-100";
 
 export default function EventPage() {
-  const { profile } = useAuth();
+  const { profile, dataTeamId } = useAuth();
   const [eventCode, setEventCode] = useState("");
   const [view, setView] = useState<View>("teams");
   const [event, setEvent] = useState<EventData | null>(null);
@@ -32,18 +32,19 @@ export default function EventPage() {
   const [status, setStatus] = useState<SyncStatus>({ state: "idle" });
 
   useEffect(() => {
-    if (!profile) return;
+    // The synced event lives in the shared store — one event per sister pair.
+    if (!dataTeamId) return;
     return onSnapshot(
-      doc(db, "teams", profile.teamId, "config", "event"),
+      doc(db, "teams", dataTeamId, "config", "event"),
       (snapshot) => {
         setEvent(snapshot.exists() ? (snapshot.data() as EventData) : null);
         setLoaded(true);
       },
     );
-  }, [profile]);
+  }, [dataTeamId]);
 
   async function handleSync(code: string) {
-    if (!profile) return;
+    if (!dataTeamId) return;
     const key = code.trim().toLowerCase();
     if (!key) return;
 
@@ -58,7 +59,7 @@ export default function EventPage() {
         });
         return;
       }
-      await setDoc(doc(db, "teams", profile.teamId, "config", "event"), {
+      await setDoc(doc(db, "teams", dataTeamId, "config", "event"), {
         ...body,
         syncedAt: Date.now(),
       });
@@ -163,7 +164,7 @@ export default function EventPage() {
           {view === "map" && (
             <MapView
               event={event}
-              teamId={profile?.teamId ?? ""}
+              teamId={dataTeamId ?? ""}
               isAdmin={isAdmin}
             />
           )}

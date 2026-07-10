@@ -41,7 +41,7 @@ interface PendingConfirmation {
 // - adminConfirmSeen=false → a scout gave their done sign-off; every admin
 //   sees "ready for your sign-off" until confirmed or dismissed.
 export function AssignmentNotifications() {
-  const { profile, user } = useAuth();
+  const { profile, user, dataTeamId } = useAuth();
   const [pending, setPending] = useState<PendingAssignment[]>([]);
   const [confirmations, setConfirmations] = useState<PendingConfirmation[]>([]);
   const [matchDoc, setMatchDoc] = useState<MatchAssignmentsDoc | null>(null);
@@ -54,10 +54,10 @@ export function AssignmentNotifications() {
   );
 
   useEffect(() => {
-    if (!profile || !user) return;
+    if (!dataTeamId || !user) return;
     return onSnapshot(
       query(
-        collection(db, "teams", profile.teamId, "talkie"),
+        collection(db, "teams", dataTeamId, "talkie"),
         where("assigneeUid", "==", user.uid),
         where("assigneeSeen", "==", false),
       ),
@@ -73,13 +73,13 @@ export function AssignmentNotifications() {
           }),
         ),
     );
-  }, [profile, user]);
+  }, [dataTeamId, user]);
 
   useEffect(() => {
-    if (!profile || profile.role !== "admin") return;
+    if (!profile || !dataTeamId || profile.role !== "admin") return;
     return onSnapshot(
       query(
-        collection(db, "teams", profile.teamId, "talkie"),
+        collection(db, "teams", dataTeamId, "talkie"),
         where("doneByUser", "==", true),
         where("doneByAdmin", "==", false),
         where("adminConfirmSeen", "==", false),
@@ -99,13 +99,13 @@ export function AssignmentNotifications() {
           }),
         ),
     );
-  }, [profile]);
+  }, [profile, dataTeamId]);
 
   // Match-scouting "you're up" banner: needs the assignment doc, the synced
   // event key, and a live view of which matches have been played.
   useEffect(() => {
-    if (!profile) return;
-    const teamId = profile.teamId;
+    if (!dataTeamId) return;
+    const teamId = dataTeamId;
     const unsubMatch = onSnapshot(
       doc(db, "teams", teamId, "config", "matchAssignments"),
       (s) => setMatchDoc(s.exists() ? (s.data() as MatchAssignmentsDoc) : null),
@@ -117,7 +117,7 @@ export function AssignmentNotifications() {
       unsubMatch();
       unsubEvent();
     };
-  }, [profile]);
+  }, [dataTeamId]);
 
   useEffect(() => {
     // Only poll TBA while this user actually has match assignments.
@@ -152,9 +152,9 @@ export function AssignmentNotifications() {
   }, [user, matchDoc, liveMatches, dismissedMatches]);
 
   async function dismiss(id: string, field: "assigneeSeen" | "adminConfirmSeen") {
-    if (!profile) return;
+    if (!dataTeamId) return;
     try {
-      await updateDoc(doc(db, "teams", profile.teamId, "talkie", id), {
+      await updateDoc(doc(db, "teams", dataTeamId, "talkie", id), {
         [field]: true,
       });
     } catch {

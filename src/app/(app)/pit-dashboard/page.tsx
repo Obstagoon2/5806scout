@@ -35,7 +35,7 @@ interface LiveResponse {
 }
 
 export default function PitDashboardPage() {
-  const { profile } = useAuth();
+  const { profile, dataTeamId } = useAuth();
   const isAdmin = profile?.role === "admin";
 
   const [event, setEvent] = useState<EventData | null>(null);
@@ -48,15 +48,15 @@ export default function PitDashboardPage() {
   // The synced event doc supplies the event key (and a match-list fallback
   // until the first live poll lands).
   useEffect(() => {
-    if (!profile || !isAdmin) return;
+    if (!dataTeamId || !isAdmin) return;
     return onSnapshot(
-      doc(db, "teams", profile.teamId, "config", "event"),
+      doc(db, "teams", dataTeamId, "config", "event"),
       (snapshot) => {
         setEvent(snapshot.exists() ? (snapshot.data() as EventData) : null);
         setEventLoaded(true);
       },
     );
-  }, [profile, isAdmin]);
+  }, [dataTeamId, isAdmin]);
 
   // Live match feed from The Blue Alliance, refreshed every minute.
   useEffect(() => {
@@ -150,7 +150,7 @@ export default function PitDashboardPage() {
           />
           <QueueingCard ourNext={ourNext} msToQueue={msToQueue} alert={queueAlert} />
           <div className="md:col-span-2">
-            <TodoCard teamId={profile?.teamId ?? ""} />
+            <TodoCard teamId={dataTeamId ?? ""} />
           </div>
         </div>
       )}

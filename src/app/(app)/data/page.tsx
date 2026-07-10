@@ -23,17 +23,18 @@ const FIELD_LABELS: Record<string, string> = Object.fromEntries(
 const COUNTER_IDS = counterFieldIds(MATCH_SCOUT_SECTIONS);
 
 export default function DataPage() {
-  const { profile } = useAuth();
+  const { dataTeamId } = useAuth();
   const [view, setView] = useState<View>("raw");
   const [submissions, setSubmissions] = useState<MatchSubmission[]>([]);
   const [teamFilter, setTeamFilter] = useState("");
   const [scoutFilter, setScoutFilter] = useState("");
 
   useEffect(() => {
-    if (!profile) return;
+    // Reads the shared store so a sister pair analyzes pooled data.
+    if (!dataTeamId) return;
     return onSnapshot(
       query(
-        collection(db, "teams", profile.teamId, "matchScouting"),
+        collection(db, "teams", dataTeamId, "matchScouting"),
         orderBy("matchNumber", "asc"),
       ),
       (snapshot) =>
@@ -51,7 +52,7 @@ export default function DataPage() {
           }),
         ),
     );
-  }, [profile]);
+  }, [dataTeamId]);
 
   const filtered = useMemo(
     () =>

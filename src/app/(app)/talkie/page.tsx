@@ -38,7 +38,7 @@ const STATUS_STYLES: Record<TalkieStatus, string> = {
 };
 
 export default function TalkiePage() {
-  const { profile, user } = useAuth();
+  const { profile, user, team, dataTeamId } = useAuth();
   const [requests, setRequests] = useState<TalkieRequest[]>([]);
   const [roster, setRoster] = useState<UserProfile[]>([]);
   const [filter, setFilter] = useState<StatusFilter>("all");
@@ -52,11 +52,11 @@ export default function TalkiePage() {
   const [savingResultId, setSavingResultId] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!profile) return;
-    const teamId = profile.teamId;
+    // Talkie requests live in the shared store — one board for a sister pair.
+    if (!dataTeamId) return;
     const unsubRequests = onSnapshot(
       query(
-        collection(db, "teams", teamId, "talkie"),
+        collection(db, "teams", dataTeamId, "talkie"),
         orderBy("createdAt", "desc"),
       ),
       (snapshot) =>
@@ -87,28 +87,46 @@ export default function TalkiePage() {
           }),
         ),
     );
-    const unsubRoster = onSnapshot(
-      query(collection(db, "users"), where("teamId", "==", teamId)),
-      (snapshot) =>
-        setRoster(
-          snapshot.docs.map((d) => {
-            const data = d.data();
-            return {
-              uid: d.id,
-              email: (data.email as string) ?? "",
-              fullName: (data.fullName as string) ?? "",
-              teamId: (data.teamId as string) ?? "",
-              role: (data.role as UserProfile["role"]) ?? "scout",
-              active: (data.active as boolean) ?? true,
-            };
-          }),
-        ),
-    );
     return () => {
       unsubRequests();
-      unsubRoster();
     };
-  }, [profile]);
+  }, [dataTeamId]);
+
+  // Assignee dropdown pools both rosters when a sister team is linked.
+  useEffect(() => {
+    if (!profile) return;
+    const teamIds = [profile.teamId, team?.sisterTeamId].filter(
+      (id): id is string => !!id,
+    );
+    const byTeam = new Map<string, UserProfile[]>();
+    const unsubs = teamIds.map((teamId) =>
+      onSnapshot(
+        query(collection(db, "users"), where("teamId", "==", teamId)),
+        (snapshot) => {
+          byTeam.set(
+            teamId,
+            snapshot.docs.map((d) => {
+              const data = d.data();
+              return {
+                uid: d.id,
+                email: (data.email as string) ?? "",
+                fullName: (data.fullName as string) ?? "",
+                teamId: (data.teamId as string) ?? "",
+                role: (data.role as UserProfile["role"]) ?? "scout",
+                active: (data.active as boolean) ?? true,
+              };
+            }),
+          );
+          setRoster(
+            teamIds
+              .flatMap((id) => byTeam.get(id) ?? [])
+              .sort((a, b) => a.fullName.localeCompare(b.fullName)),
+          );
+        },
+      ),
+    );
+    return () => unsubs.forEach((unsub) => unsub());
+  }, [profile, team?.sisterTeamId]);
 
   const filtered = useMemo(() => {
     if (filter === "all") return requests;
@@ -136,7 +154,8 @@ export default function TalkiePage() {
     setSubmitting(true);
     setError(null);
     try {
-      await addDoc(collection(db, "teams", profile.teamId, "talkie"), {
+      if (!dataTeamId) return;
+      await addDoc(collection(db, "teams", dataTeamId, "talkie"), {
         title: title.trim(),
         details: details.trim(),
         status: "open",
@@ -160,10 +179,10 @@ export default function TalkiePage() {
   }
 
   async function patch(id: string, fields: Record<string, unknown>) {
-    if (!profile) return;
+    if (!dataTeamId) return;
     setError(null);
     try {
-      await updateDoc(doc(db, "teams", profile.teamId, "talkie", id), {
+      await updateDoc(doc(db, "teams", dataTeamId, "talkie", id), {
         ...fields,
         updatedAt: serverTimestamp(),
       });

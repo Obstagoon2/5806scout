@@ -37,7 +37,7 @@ function phaseAvg(agg: TeamAggregate | undefined, ids: string[]): number | null 
 }
 
 export default function PicklistPage() {
-  const { profile } = useAuth();
+  const { profile, dataTeamId } = useAuth();
   const [event, setEvent] = useState<EventData | null>(null);
   const [picklist, setPicklist] = useState<PicklistDoc | null>(null);
   const [submissions, setSubmissions] = useState<MatchSubmission[]>([]);
@@ -47,21 +47,23 @@ export default function PicklistPage() {
   const dragFrom = useRef<number | null>(null);
 
   useEffect(() => {
-    if (!profile) return;
-    const teamId = profile.teamId;
+    if (!profile || !dataTeamId) return;
+    // Event + scouting data come from the shared store; the picklist itself
+    // is the one thing a sister pair does NOT share — it stays on our own
+    // team doc (and rules block the sister team from ever reading it).
     const unsubEvent = onSnapshot(
-      doc(db, "teams", teamId, "config", "event"),
+      doc(db, "teams", dataTeamId, "config", "event"),
       (s) => {
         setEvent(s.exists() ? (s.data() as EventData) : null);
         setLoaded(true);
       },
     );
     const unsubPicklist = onSnapshot(
-      doc(db, "teams", teamId, "config", "picklist"),
+      doc(db, "teams", profile.teamId, "config", "picklist"),
       (s) => setPicklist(s.exists() ? (s.data() as PicklistDoc) : null),
     );
     const unsubScouting = onSnapshot(
-      collection(db, "teams", teamId, "matchScouting"),
+      collection(db, "teams", dataTeamId, "matchScouting"),
       (snapshot) =>
         setSubmissions(
           snapshot.docs.map((d) => {
@@ -82,7 +84,7 @@ export default function PicklistPage() {
       unsubPicklist();
       unsubScouting();
     };
-  }, [profile]);
+  }, [profile, dataTeamId]);
 
   // Official qual ranks (Statbotics via the rankings route), refreshed every
   // minute like the Event tab's Ranking view. Missing data just renders "—".

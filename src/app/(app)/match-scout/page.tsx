@@ -33,7 +33,7 @@ type Status =
   | { state: "error"; message: string };
 
 export default function MatchScoutPage() {
-  const { profile, user } = useAuth();
+  const { profile, user, dataTeamId } = useAuth();
   const [matchNumber, setMatchNumber] = useState("");
   const [scoutedTeam, setScoutedTeam] = useState("");
   const [alliance, setAlliance] = useState<Alliance | null>(null);
@@ -44,10 +44,11 @@ export default function MatchScoutPage() {
   const [recent, setRecent] = useState<RecentSubmission[]>([]);
 
   useEffect(() => {
-    if (!profile) return;
+    // Submissions land in the shared store so a sister pair pools its data.
+    if (!dataTeamId) return;
     return onSnapshot(
       query(
-        collection(db, "teams", profile.teamId, "matchScouting"),
+        collection(db, "teams", dataTeamId, "matchScouting"),
         orderBy("createdAt", "desc"),
         limit(10),
       ),
@@ -65,10 +66,10 @@ export default function MatchScoutPage() {
           }),
         ),
     );
-  }, [profile]);
+  }, [dataTeamId]);
 
   async function handleSubmit() {
-    if (!profile || !user) return;
+    if (!profile || !user || !dataTeamId) return;
 
     const match = Number(matchNumber.trim());
     const team = scoutedTeam.trim();
@@ -82,7 +83,7 @@ export default function MatchScoutPage() {
 
     setStatus({ state: "saving" });
     try {
-      await addDoc(collection(db, "teams", profile.teamId, "matchScouting"), {
+      await addDoc(collection(db, "teams", dataTeamId, "matchScouting"), {
         matchNumber: match,
         scoutedTeam: team,
         alliance,

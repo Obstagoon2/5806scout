@@ -29,6 +29,25 @@ service cloud.firestore {
       return isSameTeam(teamId) && myProfile().role == 'admin';
     }
 
+    function myTeamId() {
+      return myProfile().teamId;
+    }
+
+    // Sister-team link (src/lib/sisterTeam.ts): only a MUTUAL link grants
+    // cross-team access — both team docs must point at each other. A team
+    // doc only gains its pointer via its own admin or an invite-code
+    // redemption (below), so a lone forged sisterTeamId grants nothing.
+    function isLinkedSisterTeam(teamId) {
+      return isSignedIn()
+        && teamId != myTeamId()
+        && get(/databases/$(database)/documents/teams/$(myTeamId())).data.sisterTeamId == teamId
+        && get(/databases/$(database)/documents/teams/$(teamId)).data.sisterTeamId == myTeamId();
+    }
+
+    function sisterLinkKeys() {
+      return ["sisterTeamId", "sisterTeamNumber", "sisterTeamName", "sisterLinkedAt", "sisterLinkCode"];
+    }
+
     match /users/{userId} {
       // Signup: a user may only create their own active profile. 'admin' is
       // permitted here because the signup flow validates ADMIN_SIGNUP_CODE
@@ -38,9 +57,13 @@ service cloud.firestore {
         && request.resource.data.role in ['scout', 'admin']
         && request.resource.data.active == true;
 
-      // Read: yourself, or any teammate (so scouts/admins can see the roster).
+      // Read: yourself, any teammate (so scouts/admins can see the roster),
+      // or a linked sister team's member — pooled scouting assignments need
+      // both rosters.
       allow read: if isSignedIn()
-        && (request.auth.uid == userId || isSameTeam(resource.data.teamId));
+        && (request.auth.uid == userId
+          || isSameTeam(resource.data.teamId)
+          || isLinkedSisterTeam(resource.data.teamId));
 
       // Update: yourself (profile edits), or a team admin managing scouts
       // (e.g. activate/deactivate) — but a non-admin can never grant
@@ -79,6 +102,30 @@ service cloud.firestore {
           && request.auth.uid == request.resource.data.adminUid
           && !("adminUid" in resource.data)
           && request.resource.data.diff(resource.data).affectedKeys().hasOnly(["adminUid"])
+        )
+        // Sister-team link: the OTHER team's admin stamps this team's half
+        // of the link by presenting a live invite code this team's admin
+        // generated (sisterInvites/{code} with fromTeamId == this team).
+        // Only the link fields may change, and only onto an unlinked team.
+        || (
+          isSignedIn()
+          && myProfile().role == 'admin'
+          && teamId != myTeamId()
+          && request.resource.data.sisterTeamId == myTeamId()
+          && !("sisterTeamId" in resource.data)
+          && get(/databases/$(database)/documents/sisterInvites/$(request.resource.data.sisterLinkCode)).data.fromTeamId == teamId
+          && request.time.toMillis() <= get(/databases/$(database)/documents/sisterInvites/$(request.resource.data.sisterLinkCode)).data.expiresAt
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(sisterLinkKeys())
+        )
+        // Sister-team unlink: either side's admin may sever a mutual link,
+        // removing the link fields and touching nothing else.
+        || (
+          isSignedIn()
+          && myProfile().role == 'admin'
+          && resource.data.sisterTeamId == myTeamId()
+          && get(/databases/$(database)/documents/teams/$(myTeamId())).data.sisterTeamId == teamId
+          && !("sisterTeamId" in request.resource.data)
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(sisterLinkKeys())
         );
       allow delete: if false;
 
@@ -86,6 +133,38 @@ service cloud.firestore {
       match /{document=**} {
         allow read, write: if isSameTeam(teamId);
       }
+
+      // A verified sister team shares the canonical store's scouting data —
+      // but never the picklist: each team ranks (and DNPs) alone, so
+      // config/picklist stays same-team-only (the wildcard above).
+      match /config/{docId} {
+        allow read, write: if docId != "picklist" && isLinkedSisterTeam(teamId);
+      }
+      match /pitScouting/{docId} {
+        allow read, write: if isLinkedSisterTeam(teamId);
+      }
+      match /matchScouting/{docId} {
+        allow read, write: if isLinkedSisterTeam(teamId);
+      }
+      match /talkie/{docId} {
+        allow read, write: if isLinkedSisterTeam(teamId);
+      }
+    }
+
+    // One-time sister-team invite codes (src/lib/sisterTeamOps.ts). The
+    // random code itself is the capability — it's only ever shown to the two
+    // admins — so any signed-in holder may look one up, but never list them.
+    match /sisterInvites/{code} {
+      allow get: if isSignedIn();
+      allow list: if false;
+      allow create: if isSignedIn()
+        && myProfile().role == 'admin'
+        && request.resource.data.fromTeamId == myTeamId()
+        && request.resource.data.createdByUid == request.auth.uid;
+      allow update: if false;
+      // Consumed on redemption by the other team's admin, or cancelled by
+      // its creator; both are admins holding the code.
+      allow delete: if isSignedIn() && myProfile().role == 'admin';
     }
   }
 }

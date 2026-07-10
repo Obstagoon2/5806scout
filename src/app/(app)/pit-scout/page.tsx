@@ -26,7 +26,7 @@ type Status =
   | { state: "error"; message: string };
 
 export default function PitScoutPage() {
-  const { profile, user } = useAuth();
+  const { profile, user, dataTeamId } = useAuth();
   const [scoutedTeams, setScoutedTeams] = useState<string[]>([]);
   const [teamInput, setTeamInput] = useState("");
   const [activeTeam, setActiveTeam] = useState<string | null>(null);
@@ -36,15 +36,16 @@ export default function PitScoutPage() {
   const [status, setStatus] = useState<Status>({ state: "idle" });
 
   useEffect(() => {
-    if (!profile) return;
+    // Pit forms live in the shared store so a sister pair pools its data.
+    if (!dataTeamId) return;
     return onSnapshot(
-      collection(db, "teams", profile.teamId, "pitScouting"),
+      collection(db, "teams", dataTeamId, "pitScouting"),
       (snapshot) => setScoutedTeams(snapshot.docs.map((d) => d.id).sort()),
     );
-  }, [profile]);
+  }, [dataTeamId]);
 
   async function openTeam(teamNumber: string) {
-    if (!profile) return;
+    if (!dataTeamId) return;
     const trimmed = teamNumber.trim();
     if (!trimmed) return;
 
@@ -53,7 +54,7 @@ export default function PitScoutPage() {
     setTeamInput("");
 
     const snapshot = await getDoc(
-      doc(db, "teams", profile.teamId, "pitScouting", trimmed),
+      doc(db, "teams", dataTeamId, "pitScouting", trimmed),
     );
     const existing = snapshot.data();
     setValues(
@@ -64,7 +65,7 @@ export default function PitScoutPage() {
   }
 
   async function handleSave() {
-    if (!profile || !user || !activeTeam) return;
+    if (!profile || !user || !activeTeam || !dataTeamId) return;
 
     const missing = missingRequiredFields(PIT_SCOUT_SECTIONS, values);
     if (missing.length > 0) {
@@ -74,7 +75,7 @@ export default function PitScoutPage() {
 
     setStatus({ state: "saving" });
     try {
-      await setDoc(doc(db, "teams", profile.teamId, "pitScouting", activeTeam), {
+      await setDoc(doc(db, "teams", dataTeamId, "pitScouting", activeTeam), {
         scoutedTeam: activeTeam,
         values,
         scoutName: profile.fullName,

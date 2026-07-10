@@ -22,7 +22,7 @@ import { useEffect, useMemo, useState } from "react";
 type View = "pit" | "match";
 
 export default function AssignmentsPage() {
-  const { profile, user } = useAuth();
+  const { profile, user, dataTeamId } = useAuth();
   const [view, setView] = useState<View>("pit");
   const [pitDoc, setPitDoc] = useState<PitAssignmentsDoc | null>(null);
   const [matchDoc, setMatchDoc] = useState<MatchAssignmentsDoc | null>(null);
@@ -30,8 +30,9 @@ export default function AssignmentsPage() {
   const [loaded, setLoaded] = useState(false);
 
   useEffect(() => {
-    if (!profile) return;
-    const teamId = profile.teamId;
+    // Assignments live in the shared store — a sister pair sees one set.
+    if (!dataTeamId) return;
+    const teamId = dataTeamId;
     const unsubPit = onSnapshot(
       doc(db, "teams", teamId, "config", "pitAssignments"),
       (s) => {
@@ -51,7 +52,7 @@ export default function AssignmentsPage() {
       unsubMatch();
       unsubEvent();
     };
-  }, [profile]);
+  }, [dataTeamId]);
 
   const isAdmin = profile?.role === "admin";
   const nicknames = useMemo(
@@ -62,10 +63,10 @@ export default function AssignmentsPage() {
   // Cross-off toggles use arrayUnion/arrayRemove so two scouts tapping at
   // the same time never clobber each other's marks.
   async function togglePitTeam(team: number, done: boolean): Promise<void> {
-    if (!profile) return;
+    if (!dataTeamId) return;
     try {
       await updateDoc(
-        doc(db, "teams", profile.teamId, "config", "pitAssignments"),
+        doc(db, "teams", dataTeamId, "config", "pitAssignments"),
         { completedTeams: done ? arrayRemove(team) : arrayUnion(team) },
       );
     } catch {
@@ -74,10 +75,10 @@ export default function AssignmentsPage() {
   }
 
   async function toggleMatchSlot(key: string, done: boolean): Promise<void> {
-    if (!profile) return;
+    if (!dataTeamId) return;
     try {
       await updateDoc(
-        doc(db, "teams", profile.teamId, "config", "matchAssignments"),
+        doc(db, "teams", dataTeamId, "config", "matchAssignments"),
         { completedSlots: done ? arrayRemove(key) : arrayUnion(key) },
       );
     } catch {
