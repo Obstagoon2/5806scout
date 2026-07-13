@@ -15,8 +15,6 @@ export interface ServerConfig {
    * if a better cheap model ships.
    */
   manualQaModel: string;
-  /** Secret code that lets a signup create an admin account. */
-  adminSignupCode: string | null;
 }
 
 export function getServerConfig(): ServerConfig {
@@ -24,6 +22,5 @@ export function getServerConfig(): ServerConfig {
     tbaApiKey: process.env.TBA_API_KEY || null,
     anthropicApiKey: process.env.ANTHROPIC_API_KEY || null,
     manualQaModel: process.env.MANUAL_QA_MODEL || "claude-haiku-4-5-20251001",
-    adminSignupCode: process.env.ADMIN_SIGNUP_CODE || null,
   };
 }

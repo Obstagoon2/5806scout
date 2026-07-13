@@ -20,6 +20,12 @@ export interface TalkieRequest {
   assigneeName: string | null;
   /** Findings/updates — editable by all scouts and the admin. */
   result: string;
+  /**
+   * Which team(s) the request is for, as team numbers. When a sister team is
+   * linked the poster picks "just my team" or "both teams"; empty means a
+   * legacy or single-team request (treated as the whole board).
+   */
+  forTeamNumbers: string[];
   /** Done sign-offs — the request only moves to "done" once both are true. */
   doneByAdmin: boolean;
   doneByUser: boolean;

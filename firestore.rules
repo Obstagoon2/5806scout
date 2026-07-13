@@ -6,10 +6,10 @@ rules_version = '2';
 //   match scout, etc. added in later milestones) that inherit the same
 //   same-team read/write rule below.
 //
-// Admin signup: the app validates a server-side ADMIN_SIGNUP_CODE (via
-// /api/admin-code) before creating a profile with role 'admin'. Rules can't
-// see that code, so 'admin' is allowed at create time — the code check is
-// the gate. Post-signup role escalation is still blocked below.
+// Admin signup: anyone may sign up as their team's admin, but each team has
+// a single admin slot — the teams/{teamId}.adminUid rules below only let the
+// FIRST claimant set it, so 'admin' is allowed on the profile at create time.
+// Post-signup role escalation is still blocked below.
 service cloud.firestore {
   match /databases/{database}/documents {
 
@@ -50,8 +50,8 @@ service cloud.firestore {
 
     match /users/{userId} {
       // Signup: a user may only create their own active profile. 'admin' is
-      // permitted here because the signup flow validates ADMIN_SIGNUP_CODE
-      // server-side first (see header comment).
+      // permitted here because the one-admin-per-team gate lives on the team
+      // doc's adminUid rules (see header comment).
       allow create: if isSignedIn()
         && request.auth.uid == userId
         && request.resource.data.role in ['scout', 'admin']

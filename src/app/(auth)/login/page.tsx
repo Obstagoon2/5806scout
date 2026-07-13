@@ -1,8 +1,16 @@
 "use client";
 
-import { auth } from "@/lib/firebase/client";
+import { GoogleSignInButton } from "@/components/GoogleSignInButton";
+import { auth, db } from "@/lib/firebase/client";
 import { FirebaseError } from "firebase/app";
-import { sendPasswordResetEmail, signInWithEmailAndPassword } from "firebase/auth";
+import {
+  GoogleAuthProvider,
+  sendPasswordResetEmail,
+  signInWithEmailAndPassword,
+  signInWithPopup,
+  signOut,
+} from "firebase/auth";
+import { doc, getDoc } from "firebase/firestore";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
@@ -25,6 +33,33 @@ export default function LoginPage() {
 
     try {
       await signInWithEmailAndPassword(auth, email, password);
+      router.replace("/home");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Login failed");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  async function handleGoogle() {
+    setError(null);
+    setSubmitting(true);
+
+    try {
+      const credential = await signInWithPopup(auth, new GoogleAuthProvider());
+
+      // Google sign-in creates an auth account even for first-timers, so a
+      // missing profile doc means they never signed up — send them to the
+      // signup form (which needs their team number) instead of into the app.
+      const profile = await getDoc(doc(db, "users", credential.user.uid));
+      if (!profile.exists()) {
+        await signOut(auth).catch(() => {});
+        setError(
+          "No account for that Google user yet — sign up first with your team number.",
+        );
+        return;
+      }
+
       router.replace("/home");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Login failed");
@@ -86,6 +121,18 @@ export default function LoginPage() {
               >
                 Forgot password?
               </button>
+
+              <div className="flex items-center gap-3 text-xs uppercase tracking-wider text-graphite-400">
+                <span className="h-px flex-1 bg-graphite-200" />
+                or
+                <span className="h-px flex-1 bg-graphite-200" />
+              </div>
+
+              <GoogleSignInButton
+                label="Continue with Google"
+                onClick={() => void handleGoogle()}
+                disabled={submitting}
+              />
             </form>
           </>
         ) : (

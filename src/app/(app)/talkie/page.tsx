@@ -14,6 +14,7 @@ import type { UserProfile } from "@/lib/types";
 import {
   addDoc,
   collection,
+  deleteDoc,
   doc,
   onSnapshot,
   orderBy,
@@ -44,6 +45,8 @@ export default function TalkiePage() {
   const [filter, setFilter] = useState<StatusFilter>("all");
   const [title, setTitle] = useState("");
   const [details, setDetails] = useState("");
+  // Sister-linked teams share one board; the poster picks who a request is for.
+  const [teamScope, setTeamScope] = useState<"own" | "both">("own");
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [expandedId, setExpandedId] = useState<string | null>(null);
@@ -74,6 +77,7 @@ export default function TalkiePage() {
               assigneeUid: (data.assigneeUid as string | null) ?? null,
               assigneeName: (data.assigneeName as string | null) ?? null,
               result: (data.result as string) ?? "",
+              forTeamNumbers: (data.forTeamNumbers as string[]) ?? [],
               // Pre-dual-sign-off docs lack the flags; a legacy "done" doc
               // counts as fully signed off so it stays in the Done tab.
               doneByAdmin:
@@ -155,9 +159,15 @@ export default function TalkiePage() {
     setError(null);
     try {
       if (!dataTeamId) return;
+      const ownNumber = team?.teamNumber ?? profile.teamId;
+      const forTeamNumbers =
+        teamScope === "both" && team?.sisterTeamNumber
+          ? [ownNumber, team.sisterTeamNumber]
+          : [ownNumber];
       await addDoc(collection(db, "teams", dataTeamId, "talkie"), {
         title: title.trim(),
         details: details.trim(),
+        forTeamNumbers,
         status: "open",
         createdByUid: user.uid,
         createdByName: profile.fullName,
@@ -210,6 +220,18 @@ export default function TalkiePage() {
     });
   }
 
+  // Only the person who posted a request may delete it.
+  async function handleDelete(request: TalkieRequest) {
+    if (!dataTeamId || request.createdByUid !== user?.uid) return;
+    if (!window.confirm("Delete this request? This can’t be undone.")) return;
+    setError(null);
+    try {
+      await deleteDoc(doc(db, "teams", dataTeamId, "talkie", request.id));
+    } catch {
+      setError("Delete failed — check your connection.");
+    }
+  }
+
   async function handleSaveResult(request: TalkieRequest) {
     const draft = resultDrafts[request.id] ?? request.result;
     setSavingResultId(request.id);
@@ -244,6 +266,35 @@ export default function TalkiePage() {
           rows={2}
           className={inputClass}
         />
+        {team?.sisterTeamNumber && (
+          <div className="flex flex-wrap items-center gap-2 text-xs text-graphite-600">
+            <span className="font-medium">This request is for</span>
+            <div className="flex rounded-md border border-graphite-200 bg-white p-0.5">
+              {(
+                [
+                  { value: "own", label: `Just your team (${team.teamNumber})` },
+                  {
+                    value: "both",
+                    label: `Both teams (${team.teamNumber} & ${team.sisterTeamNumber})`,
+                  },
+                ] as const
+              ).map((option) => (
+                <button
+                  key={option.value}
+                  type="button"
+                  onClick={() => setTeamScope(option.value)}
+                  className={`rounded px-3 py-1.5 font-medium transition ${
+                    teamScope === option.value
+                      ? "bg-maroon-600 text-white"
+                      : "text-graphite-600 hover:text-graphite-900"
+                  }`}
+                >
+                  {option.label}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
         <button
           type="submit"
           disabled={submitting || !title.trim()}
@@ -290,6 +341,7 @@ export default function TalkiePage() {
           const awaitingOther =
             request.status !== "done" &&
             (request.doneByAdmin || request.doneByUser);
+          const isCreator = request.createdByUid === user?.uid;
           return (
             <li
               key={request.id}
@@ -320,10 +372,17 @@ export default function TalkiePage() {
                     </p>
                   )}
                 </div>
-                <span
-                  className={`shrink-0 rounded px-2 py-1 text-xs font-semibold ${STATUS_STYLES[request.status]}`}
-                >
-                  {STATUS_LABELS[request.status]}
+                <span className="flex shrink-0 items-center gap-1.5">
+                  {request.forTeamNumbers.length > 0 && (
+                    <span className="rounded bg-graphite-100 px-2 py-1 text-xs font-semibold text-graphite-600">
+                      {request.forTeamNumbers.join(" & ")}
+                    </span>
+                  )}
+                  <span
+                    className={`rounded px-2 py-1 text-xs font-semibold ${STATUS_STYLES[request.status]}`}
+                  >
+                    {STATUS_LABELS[request.status]}
+                  </span>
                 </span>
               </button>
 
@@ -361,7 +420,7 @@ export default function TalkiePage() {
                 )}
               </div>
 
-              {(doneFields || awaitingOther) && (
+              {(doneFields || awaitingOther || isCreator) && (
                 <div className="flex flex-wrap items-center gap-2">
                   {doneFields && (
                     <button
@@ -393,6 +452,15 @@ export default function TalkiePage() {
                           } to confirm`
                         : "Waiting for an admin to confirm"}
                     </span>
+                  )}
+                  {isCreator && (
+                    <button
+                      type="button"
+                      onClick={() => void handleDelete(request)}
+                      className="ml-auto rounded-md border border-maroon-200 px-3 py-1.5 text-xs font-semibold text-maroon-700 transition hover:bg-maroon-50"
+                    >
+                      Delete
+                    </button>
                   )}
                 </div>
               )}
