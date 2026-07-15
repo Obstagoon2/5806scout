@@ -29,8 +29,7 @@ import { useEffect, useMemo, useState } from "react";
 // "mine" = assigned to the signed-in user and not yet done.
 type StatusFilter = TalkieStatus | "all" | "mine";
 
-const inputClass =
-  "w-full rounded-md border border-graphite-200 bg-white px-3 py-2 text-sm outline-none transition focus:border-maroon-400 focus:ring-2 focus:ring-maroon-100";
+const inputClass = "field-input";
 
 const STATUS_STYLES: Record<TalkieStatus, string> = {
   open: "bg-amber-100 text-amber-900",
@@ -242,7 +241,10 @@ export default function TalkiePage() {
   return (
     <main className="mx-auto flex w-full max-w-3xl flex-col gap-6 px-4 py-8 md:px-6">
       <div>
-        <h1 className="text-xl font-semibold text-graphite-900">Talkie</h1>
+        <h1 className="flex items-center gap-2.5 text-xl font-semibold text-graphite-900">
+          <span aria-hidden className="h-5 w-1.5 bg-maroon-600" />
+          Talkie
+        </h1>
         <p className="mt-1 text-sm text-graphite-500">
           Requests and tasks between the stands and the pit — {openCount} active.
         </p>
@@ -250,7 +252,7 @@ export default function TalkiePage() {
 
       <form
         onSubmit={handlePost}
-        className="flex flex-col gap-3 rounded-lg border border-graphite-200 bg-white p-4"
+        className="surface-card flex flex-col gap-3 p-4"
       >
         <input
           type="text"
@@ -269,7 +271,7 @@ export default function TalkiePage() {
         {team?.sisterTeamNumber && (
           <div className="flex flex-wrap items-center gap-2 text-xs text-graphite-600">
             <span className="font-medium">This request is for</span>
-            <div className="flex rounded-md border border-graphite-200 bg-white p-0.5">
+            <div className="surface-card flex p-0.5">
               {(
                 [
                   { value: "own", label: `Just your team (${team.teamNumber})` },
@@ -298,19 +300,19 @@ export default function TalkiePage() {
         <button
           type="submit"
           disabled={submitting || !title.trim()}
-          className="self-end rounded-md bg-maroon-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-maroon-700 disabled:opacity-60"
+          className="btn-primary self-end px-4 py-2"
         >
           {submitting ? "Posting…" : "Post request"}
         </button>
       </form>
 
       {error && (
-        <p className="rounded-md bg-maroon-50 px-3 py-2 text-sm text-maroon-700">
+        <p className="badge-error rounded-md px-3 py-2 text-sm normal-case tracking-normal">
           {error}
         </p>
       )}
 
-      <div className="flex w-fit flex-wrap rounded-md border border-graphite-200 bg-white p-0.5">
+      <div className="surface-card flex w-fit flex-wrap p-0.5">
         {(["all", "mine", ...TALKIE_STATUSES] as const).map((s) => (
           <button
             key={s}
@@ -345,7 +347,7 @@ export default function TalkiePage() {
           return (
             <li
               key={request.id}
-              className="flex flex-col gap-2 rounded-lg border border-graphite-200 bg-white p-4"
+              className="surface-card flex flex-col gap-2 p-4 transition hover:border-graphite-300"
             >
               <button
                 type="button"
@@ -401,7 +403,7 @@ export default function TalkiePage() {
                     <select
                       value={request.assigneeUid ?? ""}
                       onChange={(e) => handleAssign(request, e.target.value)}
-                      className="rounded-md border border-graphite-200 bg-white px-2 py-1 text-xs outline-none transition focus:border-maroon-400"
+                      className="rounded-md border border-graphite-200 bg-white px-2 py-1 text-xs outline-none transition focus:border-maroon-400 focus:ring-2 focus:ring-maroon-100"
                     >
                       <option value="">Unassigned</option>
                       {roster.map((member) => (
@@ -437,7 +439,7 @@ export default function TalkiePage() {
                             : doneFields,
                         )
                       }
-                      className="rounded-md bg-green-600 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-green-700"
+                      className="rounded-md bg-green-500 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-green-600 active:bg-green-700"
                     >
                       Mark as Done
                     </button>
@@ -457,7 +459,7 @@ export default function TalkiePage() {
                     <button
                       type="button"
                       onClick={() => void handleDelete(request)}
-                      className="ml-auto rounded-md border border-maroon-200 px-3 py-1.5 text-xs font-semibold text-maroon-700 transition hover:bg-maroon-50"
+                      className="btn-ghost ml-auto border border-maroon-200 text-maroon-700 hover:bg-maroon-50"
                     >
                       Delete
                     </button>
@@ -488,7 +490,7 @@ export default function TalkiePage() {
                       savingResultId === request.id || draft === request.result
                     }
                     onClick={() => void handleSaveResult(request)}
-                    className="self-end rounded-md bg-maroon-600 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-maroon-700 disabled:opacity-60"
+                    className="btn-primary self-end px-3 py-1.5 text-xs"
                   >
                     {savingResultId === request.id ? "Saving…" : "Save result"}
                   </button>
@@ -498,7 +500,7 @@ export default function TalkiePage() {
           );
         })}
         {filtered.length === 0 && (
-          <li className="rounded-lg border border-dashed border-graphite-300 bg-white px-6 py-10 text-center text-sm text-graphite-500">
+          <li className="rounded-lg border border-dashed border-graphite-300 bg-graphite-50 px-6 py-10 text-center text-sm text-graphite-500">
             {requests.length === 0
               ? "No requests yet — post the first one above."
               : filter === "mine"

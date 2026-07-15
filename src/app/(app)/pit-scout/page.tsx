@@ -94,7 +94,10 @@ export default function PitScoutPage() {
   return (
     <main className="mx-auto flex w-full max-w-2xl flex-col gap-6 px-4 py-8 md:px-6">
       <div>
-        <h1 className="text-xl font-semibold text-graphite-900">Pit Scout</h1>
+        <h1 className="flex items-center gap-2.5 text-xl font-semibold text-graphite-900">
+          <span aria-hidden className="h-5 w-1.5 bg-maroon-600" />
+          Pit Scout
+        </h1>
         <p className="mt-1 text-sm text-graphite-500">
           One form per robot — filled out in the pit, editable any time.
         </p>
@@ -113,11 +116,11 @@ export default function PitScoutPage() {
           placeholder="Team number"
           value={teamInput}
           onChange={(e) => setTeamInput(e.target.value)}
-          className="font-stat w-40 rounded-md border border-graphite-200 bg-white px-3 py-2.5 text-sm outline-none transition focus:border-maroon-400 focus:ring-2 focus:ring-maroon-100"
+          className="field-input stat w-40"
         />
         <button
           type="submit"
-          className="rounded-md bg-maroon-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-maroon-700"
+          className="btn-primary"
         >
           Scout
         </button>
@@ -130,9 +133,9 @@ export default function PitScoutPage() {
               key={team}
               type="button"
               onClick={() => openTeam(team)}
-              className={`font-stat rounded-full border px-3 py-1.5 text-sm transition ${
+              className={`stat rounded-full border px-3 py-1.5 text-sm transition ${
                 team === activeTeam
-                  ? "border-maroon-600 bg-maroon-50 text-maroon-700"
+                  ? "border-maroon-600 bg-maroon-600 text-white"
                   : "border-graphite-200 bg-white text-graphite-700 hover:border-graphite-300"
               }`}
             >
@@ -143,8 +146,8 @@ export default function PitScoutPage() {
       )}
 
       {activeTeam && (
-        <div className="flex flex-col gap-6 rounded-lg border border-graphite-200 bg-white p-4 md:p-6">
-          <h2 className="font-stat text-lg font-semibold text-graphite-900">
+        <div className="surface-card flex flex-col gap-6 p-4 md:p-6">
+          <h2 className="stat text-lg font-semibold text-graphite-900">
             Team {activeTeam}
           </h2>
 
@@ -158,12 +161,12 @@ export default function PitScoutPage() {
           />
 
           {status.state === "error" && (
-            <p className="rounded-md bg-maroon-50 px-3 py-2 text-sm text-maroon-700">
+            <p className="badge-error rounded-md px-3 py-2 text-sm normal-case tracking-normal">
               {status.message}
             </p>
           )}
           {status.state === "saved" && (
-            <p className="rounded-md bg-green-100 px-3 py-2 text-sm text-green-500">
+            <p className="badge-success rounded-md px-3 py-2 text-sm normal-case tracking-normal">
               Saved.
             </p>
           )}
@@ -172,7 +175,7 @@ export default function PitScoutPage() {
             type="button"
             onClick={handleSave}
             disabled={status.state === "saving"}
-            className="rounded-md bg-maroon-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-maroon-700 disabled:opacity-60"
+            className="btn-primary"
           >
             {status.state === "saving" ? "Saving…" : `Save Team ${activeTeam}`}
           </button>

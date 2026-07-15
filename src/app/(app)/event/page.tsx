@@ -20,8 +20,7 @@ type SyncStatus =
   | { state: "syncing" }
   | { state: "error"; message: string };
 
-const inputClass =
-  "font-stat w-44 rounded-md border border-graphite-200 bg-white px-3 py-2 text-sm outline-none transition focus:border-maroon-400 focus:ring-2 focus:ring-maroon-100";
+const inputClass = "field-input stat w-44";
 
 export default function EventPage() {
   const { profile, dataTeamId } = useAuth();
@@ -76,7 +75,10 @@ export default function EventPage() {
     <main className="mx-auto flex w-full max-w-5xl flex-col gap-6 px-4 py-8 md:px-6">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h1 className="text-xl font-semibold text-graphite-900">Event</h1>
+          <h1 className="flex items-center gap-2.5 text-xl font-semibold text-graphite-900">
+            <span aria-hidden className="h-5 w-1.5 bg-maroon-600" />
+            Event
+          </h1>
           <p className="mt-1 text-sm text-graphite-500">
             {event
               ? `${event.eventName} · ${event.teams.length} teams · synced ${new Date(event.syncedAt).toLocaleString()}`
@@ -102,7 +104,7 @@ export default function EventPage() {
             <button
               type="submit"
               disabled={status.state === "syncing" || !eventCode.trim()}
-              className="rounded-md bg-maroon-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-maroon-700 disabled:opacity-60"
+              className="btn-primary px-4 py-2"
             >
               {status.state === "syncing" ? "Syncing…" : "Sync"}
             </button>
@@ -111,7 +113,7 @@ export default function EventPage() {
                 type="button"
                 disabled={status.state === "syncing"}
                 onClick={() => void handleSync(event.eventKey)}
-                className="rounded-md border border-graphite-200 bg-white px-3 py-2 text-sm font-medium text-graphite-700 transition hover:border-graphite-300 disabled:opacity-60"
+                className="btn-secondary px-3 py-2"
               >
                 Refresh
               </button>
@@ -121,13 +123,13 @@ export default function EventPage() {
       </div>
 
       {status.state === "error" && (
-        <p className="rounded-md bg-maroon-50 px-3 py-2 text-sm text-maroon-700">
+        <p className="badge-error rounded-md px-3 py-2 text-sm normal-case tracking-normal">
           {status.message}
         </p>
       )}
 
       {loaded && !event && (
-        <div className="rounded-lg border border-dashed border-graphite-300 bg-white px-6 py-12 text-center text-sm text-graphite-500">
+        <div className="rounded-lg border border-dashed border-graphite-300 bg-graphite-50 px-6 py-12 text-center text-sm text-graphite-500">
           No event synced yet.
           {isAdmin
             ? " Enter your event code above (find it on thebluealliance.com)."
@@ -137,7 +139,7 @@ export default function EventPage() {
 
       {event && (
         <>
-          <div className="flex w-fit rounded-md border border-graphite-200 bg-white p-0.5">
+          <div className="surface-card flex w-fit p-0.5">
             {(["teams", "schedule", "ranking", "map"] as const).map((v) => (
               <button
                 key={v}
@@ -176,7 +178,7 @@ export default function EventPage() {
 
 function TeamsTable({ event }: { event: EventData }) {
   return (
-    <div className="overflow-x-auto rounded-lg border border-graphite-200 bg-white">
+    <div className="surface-card overflow-x-auto">
       <table className="w-full min-w-max text-left text-sm">
         <thead>
           <tr className="border-b border-graphite-200 text-xs uppercase tracking-wider text-graphite-500">
@@ -189,14 +191,14 @@ function TeamsTable({ event }: { event: EventData }) {
         </thead>
         <tbody className="divide-y divide-graphite-100">
           {event.teams.map((t) => (
-            <tr key={t.teamNumber}>
-              <td className="font-stat px-3 py-2 font-semibold">{t.teamNumber}</td>
+            <tr key={t.teamNumber} className="transition hover:bg-graphite-50">
+              <td className="stat px-3 py-2 font-semibold">{t.teamNumber}</td>
               <td className="px-3 py-2">{t.nickname}</td>
               <td className="px-3 py-2 text-graphite-500">{t.city}</td>
-              <td className="font-stat px-3 py-2">
+              <td className="stat px-3 py-2">
                 {t.epa !== null ? t.epa.toFixed(1) : "—"}
               </td>
-              <td className="font-stat px-3 py-2">{t.epaRank ?? "—"}</td>
+              <td className="stat px-3 py-2">{t.epaRank ?? "—"}</td>
             </tr>
           ))}
         </tbody>
@@ -253,7 +255,7 @@ function MapView({
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="rounded-lg border border-graphite-200 bg-white p-4">
+      <div className="surface-card p-4">
         <h2 className="text-sm font-semibold text-graphite-900">Venue</h2>
         {venue ? (
           <p className="mt-1 text-sm text-graphite-600">
@@ -285,7 +287,7 @@ function MapView({
         />
       )}
 
-      <div className="flex flex-col gap-3 rounded-lg border border-graphite-200 bg-white p-4">
+      <div className="surface-card flex flex-col gap-3 p-4">
         <div>
           <h2 className="text-sm font-semibold text-graphite-900">Pit map</h2>
           <p className="mt-1 text-sm text-graphite-500">
@@ -315,7 +317,7 @@ function MapView({
             <button
               type="submit"
               disabled={!pitMapUrl.trim()}
-              className="rounded-md bg-maroon-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-maroon-700 disabled:opacity-60"
+              className="btn-primary px-4 py-2"
             >
               {pitMap ? "Replace" : "Add"}
             </button>
@@ -323,7 +325,7 @@ function MapView({
         )}
 
         {saveError && (
-          <p className="rounded-md bg-maroon-50 px-3 py-2 text-sm text-maroon-700">
+          <p className="badge-error rounded-md px-3 py-2 text-sm normal-case tracking-normal">
             {saveError}
           </p>
         )}
@@ -400,19 +402,23 @@ function RankingTable({ eventKey, myTeam }: { eventKey: string; myTeam: string }
       </p>
 
       {error && (
-        <p className="rounded-md bg-maroon-50 px-3 py-2 text-sm text-maroon-700">
+        <p className="badge-error rounded-md px-3 py-2 text-sm normal-case tracking-normal">
           {error}
         </p>
       )}
 
       {rankings === null && !error && (
-        <div className="rounded-lg border border-dashed border-graphite-300 bg-white px-6 py-12 text-center text-sm text-graphite-500">
+        <div className="rounded-lg border border-dashed border-graphite-300 bg-graphite-50 px-6 py-12 text-center text-sm text-graphite-500">
+          <span
+            aria-hidden
+            className="mx-auto mb-2 block h-4 w-4 animate-spin-loading rounded-full border-2 border-graphite-300 border-t-maroon-500"
+          />
           Loading rankings…
         </div>
       )}
 
       {rankings !== null && (
-        <div className="overflow-x-auto rounded-lg border border-graphite-200 bg-white">
+        <div className="surface-card overflow-x-auto">
           <table className="w-full min-w-max text-left text-sm">
             <thead>
               <tr className="border-b border-graphite-200 text-xs uppercase tracking-wider text-graphite-500">
@@ -428,24 +434,24 @@ function RankingTable({ eventKey, myTeam }: { eventKey: string; myTeam: string }
               {rankings.map((row) => (
                 <tr
                   key={row.teamNumber}
-                  className={row.teamNumber === myNumber ? "bg-amber-50" : ""}
+                  className={`transition hover:bg-graphite-50 ${row.teamNumber === myNumber ? "bg-amber-50" : ""}`}
                 >
-                  <td className="font-stat px-3 py-2 font-semibold text-graphite-400">
+                  <td className="stat px-3 py-2 font-semibold text-graphite-400">
                     {row.rank ?? "—"}
                   </td>
-                  <td className="font-stat px-3 py-2 font-semibold">
+                  <td className="stat px-3 py-2 font-semibold">
                     {row.teamNumber}
                   </td>
                   <td className="px-3 py-2">{row.teamName}</td>
-                  <td className="font-stat px-3 py-2">
+                  <td className="stat px-3 py-2">
                     {row.wins !== null
                       ? `${row.wins}–${row.losses ?? 0}–${row.ties ?? 0}`
                       : "—"}
                   </td>
-                  <td className="font-stat px-3 py-2">
+                  <td className="stat px-3 py-2">
                     {row.rpsPerMatch !== null ? row.rpsPerMatch.toFixed(2) : "—"}
                   </td>
-                  <td className="font-stat px-3 py-2">
+                  <td className="stat px-3 py-2">
                     {row.epa !== null ? row.epa.toFixed(1) : "—"}
                   </td>
                 </tr>
@@ -477,7 +483,7 @@ const COMP_LEVEL_LABELS: Record<string, string> = {
 function ScheduleTable({ event, myTeam }: { event: EventData; myTeam: string }) {
   const myNumber = Number(myTeam);
   return (
-    <div className="overflow-x-auto rounded-lg border border-graphite-200 bg-white">
+    <div className="surface-card overflow-x-auto">
       <table className="w-full min-w-max text-left text-sm">
         <thead>
           <tr className="border-b border-graphite-200 text-xs uppercase tracking-wider text-graphite-500">
@@ -490,8 +496,8 @@ function ScheduleTable({ event, myTeam }: { event: EventData; myTeam: string }) 
         </thead>
         <tbody className="divide-y divide-graphite-100">
           {event.matches.map((m) => (
-            <tr key={m.key}>
-              <td className="font-stat px-3 py-2 font-semibold">
+            <tr key={m.key} className="transition hover:bg-graphite-50">
+              <td className="stat px-3 py-2 font-semibold">
                 {COMP_LEVEL_LABELS[m.compLevel] ?? m.compLevel}
                 {m.matchNumber}
               </td>
@@ -501,7 +507,7 @@ function ScheduleTable({ event, myTeam }: { event: EventData; myTeam: string }) 
               <td className="px-3 py-2">
                 <AllianceCell teams={m.blue} color="blue" myNumber={myNumber} won={m.winner === "blue"} />
               </td>
-              <td className="font-stat px-3 py-2">
+              <td className="stat px-3 py-2">
                 {m.redScore !== null && m.blueScore !== null
                   ? `${m.redScore} – ${m.blueScore}`
                   : "—"}
@@ -542,7 +548,7 @@ function AllianceCell({
   won: boolean;
 }) {
   return (
-    <span className={`font-stat flex gap-2 ${won ? "font-semibold" : ""}`}>
+    <span className={`stat flex gap-2 ${won ? "font-semibold" : ""}`}>
       {teams.map((t) => (
         <span
           key={t}

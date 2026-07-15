@@ -15,7 +15,8 @@ export function SchemaForm({ sections, values, onChange }: SchemaFormProps) {
     <div className="flex flex-col gap-8">
       {sections.map((section) => (
         <fieldset key={section.title} className="flex flex-col gap-4">
-          <legend className="mb-1 text-xs font-semibold uppercase tracking-wider text-maroon-700">
+          <legend className="mb-1 flex items-center gap-2 text-xs font-semibold uppercase tracking-widest text-maroon-700">
+            <span aria-hidden className="h-2.5 w-1 bg-maroon-600" />
             {section.title}
           </legend>
           {section.description && (
@@ -37,8 +38,7 @@ export function SchemaForm({ sections, values, onChange }: SchemaFormProps) {
   );
 }
 
-const inputClass =
-  "w-full rounded-md border border-graphite-200 bg-white px-3 py-2.5 text-sm text-graphite-900 outline-none transition focus:border-maroon-400 focus:ring-2 focus:ring-maroon-100";
+const inputClass = "field-input";
 
 function Field({
   field,
@@ -117,7 +117,7 @@ function Field({
         <div
           role="group"
           aria-label={field.label}
-          className="flex items-center justify-between gap-3 rounded-md border border-graphite-200 bg-white px-3 py-2"
+          className="surface-card flex items-center justify-between gap-3 px-3 py-2"
         >
           <span className="text-sm font-medium text-graphite-700">
             {field.label}
@@ -128,11 +128,11 @@ function Field({
               aria-label={`Decrease ${field.label}`}
               disabled={count <= 0}
               onClick={() => onChange(count - 1)}
-              className="h-11 w-11 rounded-md border border-graphite-200 text-lg font-semibold text-graphite-700 transition hover:border-graphite-300 disabled:opacity-40"
+              className="h-11 w-11 rounded-md border border-graphite-200 text-lg font-semibold text-graphite-700 transition hover:border-graphite-300 active:bg-graphite-100 disabled:opacity-40"
             >
               −
             </button>
-            <span className="font-stat w-10 text-center text-lg font-semibold text-graphite-900">
+            <span className="stat w-10 text-center text-lg font-semibold text-graphite-900">
               {count}
             </span>
             <button
@@ -140,7 +140,7 @@ function Field({
               aria-label={`Increase ${field.label}`}
               disabled={atMax}
               onClick={() => onChange(count + 1)}
-              className="h-11 w-11 rounded-md bg-maroon-600 text-lg font-semibold text-white transition hover:bg-maroon-700 disabled:opacity-40"
+              className="h-11 w-11 rounded-md bg-maroon-600 text-lg font-semibold text-white transition hover:bg-maroon-700 active:bg-maroon-800 disabled:opacity-40"
             >
               +
             </button>

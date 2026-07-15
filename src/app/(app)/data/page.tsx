@@ -74,13 +74,16 @@ export default function DataPage() {
     <main className="mx-auto flex w-full max-w-[1600px] flex-col gap-6 px-4 py-8 md:px-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-xl font-semibold text-graphite-900">Data</h1>
+          <h1 className="flex items-center gap-2.5 text-xl font-semibold text-graphite-900">
+            <span aria-hidden className="h-5 w-1.5 bg-maroon-600" />
+            Data
+          </h1>
           <p className="mt-1 text-sm text-graphite-500">
             {submissions.length} match submission{submissions.length === 1 ? "" : "s"} —
             updates live.
           </p>
         </div>
-        <div className="flex rounded-md border border-graphite-200 bg-white p-0.5">
+        <div className="surface-card flex p-0.5">
           {(["raw", "teams"] as const).map((v) => (
             <button
               key={v}
@@ -107,18 +110,18 @@ export default function DataPage() {
               placeholder="Filter team #"
               value={teamFilter}
               onChange={(e) => setTeamFilter(e.target.value)}
-              className="font-stat w-36 rounded-md border border-graphite-200 bg-white px-3 py-2 text-sm outline-none transition focus:border-maroon-400 focus:ring-2 focus:ring-maroon-100"
+              className="field-input stat w-36"
             />
             <input
               type="text"
               placeholder="Filter scout"
               value={scoutFilter}
               onChange={(e) => setScoutFilter(e.target.value)}
-              className="w-36 rounded-md border border-graphite-200 bg-white px-3 py-2 text-sm outline-none transition focus:border-maroon-400 focus:ring-2 focus:ring-maroon-100"
+              className="field-input w-36"
             />
           </div>
 
-          <div className="overflow-x-auto rounded-lg border border-graphite-200 bg-white">
+          <div className="surface-card overflow-x-auto">
             <table className="w-full min-w-max text-left text-sm">
               <thead>
                 <tr className="border-b border-graphite-200 text-xs uppercase tracking-wider text-graphite-500">
@@ -135,9 +138,9 @@ export default function DataPage() {
               </thead>
               <tbody className="divide-y divide-graphite-100">
                 {filtered.map((s) => (
-                  <tr key={s.id}>
-                    <td className="font-stat px-3 py-2">Q{s.matchNumber}</td>
-                    <td className="font-stat px-3 py-2">{s.scoutedTeam}</td>
+                  <tr key={s.id} className="transition hover:bg-graphite-50">
+                    <td className="stat px-3 py-2">Q{s.matchNumber}</td>
+                    <td className="stat px-3 py-2">{s.scoutedTeam}</td>
                     <td className="px-3 py-2">
                       <span
                         className={`inline-block rounded px-1.5 py-0.5 text-xs font-semibold ${
@@ -150,7 +153,7 @@ export default function DataPage() {
                       </span>
                     </td>
                     {COUNTER_IDS.map((id) => (
-                      <td key={id} className="font-stat px-3 py-2">
+                      <td key={id} className="stat px-3 py-2">
                         {typeof s.values[id] === "number" ? (s.values[id] as number) : 0}
                       </td>
                     ))}
@@ -174,7 +177,7 @@ export default function DataPage() {
       )}
 
       {view === "teams" && (
-        <div className="overflow-x-auto rounded-lg border border-graphite-200 bg-white">
+        <div className="surface-card overflow-x-auto">
           <table className="w-full min-w-max text-left text-sm">
             <thead>
               <tr className="border-b border-graphite-200 text-xs uppercase tracking-wider text-graphite-500">
@@ -190,11 +193,11 @@ export default function DataPage() {
             </thead>
             <tbody className="divide-y divide-graphite-100">
               {aggregates.map((agg) => (
-                <tr key={agg.team}>
-                  <td className="font-stat px-3 py-2 font-semibold">{agg.team}</td>
-                  <td className="font-stat px-3 py-2">{agg.matches}</td>
+                <tr key={agg.team} className="transition hover:bg-graphite-50">
+                  <td className="stat px-3 py-2 font-semibold">{agg.team}</td>
+                  <td className="stat px-3 py-2">{agg.matches}</td>
                   {COUNTER_IDS.map((id) => (
-                    <td key={id} className="font-stat px-3 py-2">
+                    <td key={id} className="stat px-3 py-2">
                       {(agg.averages[id] ?? 0).toFixed(1)}
                     </td>
                   ))}

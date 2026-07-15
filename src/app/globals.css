@@ -1,11 +1,13 @@
 @import "tailwindcss";
 
 /*
- * Design direction: technical / utilitarian "pit crew" field-ops tool —
- * dense, fast to scan, built for repeated use in loud stands (mobile) and
+ * Design direction: "The Lion's Den" — technical / utilitarian field-ops
+ * console, dense and fast to scan, built for loud stands (mobile) and
  * focused review at a laptop (desktop). Maroon is the identity color but is
  * paired with neutral graphite chrome and functional accents so the palette
- * stays multi-dimensional rather than maroon-on-maroon.
+ * stays multi-dimensional rather than maroon-on-maroon. Flat by default —
+ * no box-shadow anywhere; depth comes from borders and a two-layer neutral
+ * system (page bg vs. white surface vs. graphite-50 panel).
  */
 :root {
   --background: #faf7f5;
@@ -23,7 +25,7 @@
   --color-maroon-800: #451015;
   --color-maroon-900: #2e0a0e;
 
-  /* Graphite — neutral chrome: nav, borders, body text. */
+  /* Graphite — neutral chrome: nav, borders, body text, panel layer. */
   --color-graphite-50: #f7f7f8;
   --color-graphite-100: #eceded;
   --color-graphite-200: #d5d7d9;
@@ -40,6 +42,7 @@
   --color-amber-100: #fdecd2;
   --color-green-500: #15803d;
   --color-green-100: #d9f0e1;
+  --color-sky-700: #0369a1;
 }
 
 @theme inline {
@@ -69,6 +72,7 @@
   --color-amber-100: var(--color-amber-100);
   --color-green-500: var(--color-green-500);
   --color-green-100: var(--color-green-100);
+  --color-sky-700: var(--color-sky-700);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
   /* Stat/number treatment — the memorable detail from the design direction:
@@ -81,6 +85,85 @@ body {
   background: var(--background);
   color: var(--foreground);
   font-family: var(--font-sans), Arial, Helvetica, sans-serif;
+}
+
+/* Generous, visible focus ring everywhere — this app is used outdoors in
+   bright light and via keyboard/switch access; the default browser outline
+   isn't enough. */
+:focus-visible {
+  outline: 2px solid var(--color-maroon-400);
+  outline-offset: 2px;
+}
+
+/* ---------------------------------------------------------------------- *
+ * Signature motif: the hazard stripe.
+ * A repeating diagonal stripe, drawn from pit-lane hazard tape — the one
+ * decorative flourish in an otherwise flat, unornamented system. Used
+ * sparingly as a thin accent band (headers, section dividers, empty
+ * states), never as a fill. Flat art (a gradient, not a shadow), so it
+ * doesn't break the Flat-By-Default rule.
+ * ---------------------------------------------------------------------- */
+.hazard-stripe {
+  background-image: repeating-linear-gradient(
+    -45deg,
+    var(--color-maroon-600) 0,
+    var(--color-maroon-600) 10px,
+    var(--color-maroon-800) 10px,
+    var(--color-maroon-800) 20px
+  );
+}
+
+/* ---------------------------------------------------------------------- *
+ * Shared surface + component classes — the vocabulary every page composes
+ * from, so 13 screens read as one system rather than 13 one-off layouts.
+ * ---------------------------------------------------------------------- */
+@layer components {
+  /* Two-layer neutral system: white surface for primary content, graphite-50
+     panel for secondary chrome (toolbars, filters, summary strips). */
+  .surface-card {
+    @apply rounded-lg border border-graphite-200 bg-white;
+  }
+  .surface-panel {
+    @apply rounded-lg border border-graphite-200 bg-graphite-50;
+  }
+
+  .btn-primary {
+    @apply inline-flex items-center justify-center gap-2 rounded-md bg-maroon-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-maroon-700 active:bg-maroon-800 disabled:cursor-not-allowed disabled:opacity-60;
+  }
+  .btn-secondary {
+    @apply inline-flex items-center justify-center gap-2 rounded-md border border-graphite-200 bg-white px-4 py-3 text-sm font-semibold text-graphite-700 transition hover:border-graphite-300 hover:bg-graphite-50 active:bg-graphite-100 disabled:cursor-not-allowed disabled:opacity-60;
+  }
+  .btn-ghost {
+    @apply inline-flex items-center justify-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-semibold text-graphite-600 transition hover:bg-graphite-100 hover:text-graphite-900;
+  }
+
+  .field-input {
+    @apply w-full rounded-md border border-graphite-200 bg-white px-3 py-2.5 text-sm text-graphite-900 outline-none transition placeholder:text-graphite-400 focus:border-maroon-400 focus:ring-2 focus:ring-maroon-100;
+  }
+
+  .section-title {
+    @apply text-xs font-semibold uppercase tracking-widest text-graphite-500;
+  }
+
+  .badge {
+    @apply inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide;
+  }
+  .badge-success {
+    @apply bg-green-100 text-green-500;
+  }
+  .badge-warning {
+    @apply bg-amber-100 text-amber-500;
+  }
+  .badge-error {
+    @apply bg-maroon-50 text-maroon-700;
+  }
+  .badge-admin {
+    @apply bg-maroon-900/40 text-white;
+  }
+
+  .stat {
+    font-family: var(--font-stat), monospace;
+  }
 }
 
 /* Queuing alert — hard on/off flash (step-start, no fade) so it reads from
@@ -102,4 +185,22 @@ body {
 
 .animate-queue-blink {
   animation: queue-blink 1s step-start infinite;
+}
+
+/* Loading spinner — the one non-decorative motion besides the queue alert.
+   Conveys "working," nothing else. */
+@keyframes spin-loading {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.animate-spin-loading {
+  animation: spin-loading 0.6s linear infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-spin-loading {
+    animation-duration: 1.2s;
+  }
 }

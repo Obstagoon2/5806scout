@@ -107,19 +107,21 @@ export default function MatchScoutPage() {
     }
   }
 
-  const inputClass =
-    "font-stat w-full rounded-md border border-graphite-200 bg-white px-3 py-2.5 text-sm outline-none transition focus:border-maroon-400 focus:ring-2 focus:ring-maroon-100";
+  const inputClass = "field-input stat";
 
   return (
     <main className="mx-auto flex w-full max-w-2xl flex-col gap-6 px-4 py-8 md:px-6">
       <div>
-        <h1 className="text-xl font-semibold text-graphite-900">Match Scout</h1>
+        <h1 className="flex items-center gap-2.5 text-xl font-semibold text-graphite-900">
+          <span aria-hidden className="h-5 w-1.5 bg-maroon-600" />
+          Match Scout
+        </h1>
         <p className="mt-1 text-sm text-graphite-500">
           One submission per robot per match — tally as you watch.
         </p>
       </div>
 
-      <div className="flex flex-col gap-4 rounded-lg border border-graphite-200 bg-white p-4 md:p-6">
+      <div className="surface-card flex flex-col gap-4 p-4 md:p-6">
         <div className="grid grid-cols-2 gap-3">
           <label className="flex flex-col gap-1.5">
             <span className="text-sm font-medium text-graphite-700">
@@ -195,12 +197,12 @@ export default function MatchScoutPage() {
         />
 
         {status.state === "error" && (
-          <p className="rounded-md bg-maroon-50 px-3 py-2 text-sm text-maroon-700">
+          <p className="badge-error rounded-md px-3 py-2 text-sm normal-case tracking-normal">
             {status.message}
           </p>
         )}
         {status.state === "saved" && (
-          <p className="rounded-md bg-green-100 px-3 py-2 text-sm text-green-500">
+          <p className="badge-success rounded-md px-3 py-2 text-sm normal-case tracking-normal">
             Submitted — form reset for the next match.
           </p>
         )}
@@ -209,7 +211,7 @@ export default function MatchScoutPage() {
           type="button"
           onClick={handleSubmit}
           disabled={status.state === "saving"}
-          className="rounded-md bg-maroon-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-maroon-700 disabled:opacity-60"
+          className="btn-primary"
         >
           {status.state === "saving" ? "Submitting…" : "Submit match"}
         </button>
@@ -217,16 +219,14 @@ export default function MatchScoutPage() {
 
       {recent.length > 0 && (
         <div className="flex flex-col gap-2">
-          <h2 className="text-xs font-semibold uppercase tracking-wider text-graphite-500">
-            Recent submissions
-          </h2>
-          <ul className="divide-y divide-graphite-100 rounded-lg border border-graphite-200 bg-white">
+          <h2 className="section-title">Recent submissions</h2>
+          <ul className="surface-card divide-y divide-graphite-100">
             {recent.map((submission) => (
               <li
                 key={submission.id}
                 className="flex items-center justify-between px-4 py-2.5 text-sm"
               >
-                <span className="font-stat text-graphite-900">
+                <span className="stat text-graphite-900">
                   Q{submission.matchNumber} · Team {submission.scoutedTeam}
                 </span>
                 <span className="flex items-center gap-2 text-graphite-500">

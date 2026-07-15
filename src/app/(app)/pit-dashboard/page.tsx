@@ -97,7 +97,7 @@ export default function PitDashboardPage() {
   if (profile && !isAdmin) {
     return (
       <main className="mx-auto w-full max-w-5xl px-4 py-8 md:px-6">
-        <div className="rounded-lg border border-dashed border-graphite-300 bg-white px-6 py-12 text-center text-sm text-graphite-500">
+        <div className="rounded-lg border border-dashed border-graphite-300 bg-graphite-50 px-6 py-12 text-center text-sm text-graphite-500">
           The Pit Dashboard is only available to admins.
         </div>
       </main>
@@ -115,7 +115,10 @@ export default function PitDashboardPage() {
   return (
     <main className="mx-auto flex w-full max-w-5xl flex-col gap-6 px-4 py-8 md:px-6">
       <div>
-        <h1 className="text-xl font-semibold text-graphite-900">Pit Dashboard</h1>
+        <h1 className="flex items-center gap-2.5 text-xl font-semibold text-graphite-900">
+          <span aria-hidden className="h-5 w-1.5 bg-maroon-600" />
+          Pit Dashboard
+        </h1>
         <p className="mt-1 text-sm text-graphite-500">
           {event
             ? `${event.eventName} — live from The Blue Alliance${
@@ -128,13 +131,13 @@ export default function PitDashboardPage() {
       </div>
 
       {liveError && (
-        <p className="rounded-md bg-maroon-50 px-3 py-2 text-sm text-maroon-700">
+        <p className="badge-error rounded-md px-3 py-2 text-sm normal-case tracking-normal">
           {liveError}
         </p>
       )}
 
       {eventLoaded && !event && (
-        <div className="rounded-lg border border-dashed border-graphite-300 bg-white px-6 py-12 text-center text-sm text-graphite-500">
+        <div className="rounded-lg border border-dashed border-graphite-300 bg-graphite-50 px-6 py-12 text-center text-sm text-graphite-500">
           No event synced yet — sync one on the Event tab to light up the
           dashboard.
         </div>
@@ -170,25 +173,23 @@ function CurrentMatchCard({
   hasSchedule: boolean;
 }) {
   return (
-    <section className="flex flex-col gap-3 rounded-lg border border-graphite-200 bg-white p-5">
-      <h2 className="text-xs font-semibold uppercase tracking-wider text-graphite-500">
-        Current match
-      </h2>
+    <section className="surface-card flex flex-col gap-3 p-5">
+      <h2 className="section-title">Current match</h2>
       {hasSchedule ? (
         <>
-          <p className="font-stat text-5xl font-bold text-graphite-900">
+          <p className="stat text-5xl font-bold text-graphite-900">
             {onField ? matchLabel(onField) : "Done"}
           </p>
           <div className="flex flex-col gap-1 text-sm text-graphite-600">
             <span>
               Last played:{" "}
-              <span className="font-stat font-semibold">
+              <span className="stat font-semibold">
                 {lastPlayed ? matchLabel(lastPlayed) : "—"}
               </span>
             </span>
             <span>
               Our next match:{" "}
-              <span className="font-stat font-semibold">
+              <span className="stat font-semibold">
                 {ourNext ? matchLabel(ourNext) : "none left"}
               </span>
               {ourNext?.scheduledTime && (
@@ -224,13 +225,13 @@ function QueueingCard({
 }) {
   return (
     <section
-      className={`flex flex-col items-center justify-center gap-2 rounded-lg border-2 p-5 text-center ${
+      className={`flex flex-col items-center justify-center gap-2 rounded-lg border-2 p-5 text-center transition ${
         alert
           ? "animate-queue-blink border-red-600"
           : "border-graphite-200 bg-white"
       }`}
     >
-      <h2 className="text-xs font-semibold uppercase tracking-wider opacity-70">
+      <h2 className="text-xs font-semibold uppercase tracking-widest opacity-70">
         Queuing
       </h2>
       {ourNext === null ? (
@@ -243,7 +244,7 @@ function QueueingCard({
         </p>
       ) : (
         <>
-          <p className="font-stat text-5xl font-bold">
+          <p className="stat text-5xl font-bold">
             {formatCountdown(msToQueue)}
           </p>
           <p className="text-sm font-medium">
@@ -290,10 +291,8 @@ function TodoCard({ teamId }: { teamId: string }) {
   }
 
   return (
-    <section className="flex flex-col gap-3 rounded-lg border border-graphite-200 bg-white p-5">
-      <h2 className="text-xs font-semibold uppercase tracking-wider text-graphite-500">
-        Pit to-do list
-      </h2>
+    <section className="surface-card flex flex-col gap-3 p-5">
+      <h2 className="section-title">Pit to-do list</h2>
 
       <form
         onSubmit={(e) => {
@@ -307,19 +306,19 @@ function TodoCard({ teamId }: { teamId: string }) {
           placeholder="e.g. Swap intake belts before Q34"
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
-          className="flex-1 rounded-md border border-graphite-200 bg-white px-3 py-2 text-sm outline-none transition focus:border-maroon-400 focus:ring-2 focus:ring-maroon-100"
+          className="field-input flex-1"
         />
         <button
           type="submit"
           disabled={!draft.trim()}
-          className="rounded-md bg-maroon-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-maroon-700 disabled:opacity-60"
+          className="btn-primary px-4 py-2"
         >
           Add
         </button>
       </form>
 
       {saveError && (
-        <p className="rounded-md bg-maroon-50 px-3 py-2 text-sm text-maroon-700">
+        <p className="badge-error rounded-md px-3 py-2 text-sm normal-case tracking-normal">
           {saveError}
         </p>
       )}

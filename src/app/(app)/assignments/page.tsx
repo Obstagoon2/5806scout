@@ -89,7 +89,10 @@ export default function AssignmentsPage() {
   return (
     <main className="mx-auto flex w-full max-w-4xl flex-col gap-6 px-4 py-8 md:px-6">
       <div>
-        <h1 className="text-xl font-semibold text-graphite-900">Assignments</h1>
+        <h1 className="flex items-center gap-2.5 text-xl font-semibold text-graphite-900">
+          <span aria-hidden className="h-5 w-1.5 bg-maroon-600" />
+          Assignments
+        </h1>
         <p className="mt-1 text-sm text-graphite-500">
           {isAdmin
             ? "Everyone's scouting assignments — generate them from the Team tab."
@@ -97,7 +100,7 @@ export default function AssignmentsPage() {
         </p>
       </div>
 
-      <div className="flex w-fit rounded-md border border-graphite-200 bg-white p-0.5">
+      <div className="surface-card flex w-fit p-0.5">
         {(["pit", "match"] as const).map((v) => (
           <button
             key={v}
@@ -144,7 +147,7 @@ export default function AssignmentsPage() {
 
 function Empty({ kind, isAdmin }: { kind: View; isAdmin: boolean }) {
   return (
-    <div className="rounded-lg border border-dashed border-graphite-300 bg-white px-6 py-12 text-center text-sm text-graphite-500">
+    <div className="rounded-lg border border-dashed border-graphite-300 bg-graphite-50 px-6 py-12 text-center text-sm text-graphite-500">
       No {kind} scouting assignments yet.
       {isAdmin
         ? ` Press “Assign ${kind === "pit" ? "Pit" : "Match"} Scout” on the Team tab.`
@@ -175,7 +178,7 @@ function PitView({
 
   if (!isAdmin && entries.length === 0) {
     return (
-      <div className="rounded-lg border border-dashed border-graphite-300 bg-white px-6 py-12 text-center text-sm text-graphite-500">
+      <div className="rounded-lg border border-dashed border-graphite-300 bg-graphite-50 px-6 py-12 text-center text-sm text-graphite-500">
         You have no pit scouting assignments in the current set.
       </div>
     );
@@ -189,7 +192,7 @@ function PitView({
       {entries.map(([uid, teams]) => (
         <section
           key={uid}
-          className="rounded-lg border border-graphite-200 bg-white p-4"
+          className="surface-card p-4"
         >
           {isAdmin && (
             <h2 className="mb-2 text-sm font-semibold text-graphite-900">
@@ -220,7 +223,7 @@ function PitView({
                           : "border-graphite-200 bg-graphite-50"
                       } ${canToggle ? "hover:border-maroon-400" : ""}`}
                     >
-                      <span className="font-stat font-semibold">{t}</span>
+                      <span className="stat font-semibold">{t}</span>
                       {nicknames.get(t) && (
                         <span className="ml-1.5 text-graphite-500">
                           {nicknames.get(t)}
@@ -256,7 +259,7 @@ function MatchView({
 
   if (slots.length === 0) {
     return (
-      <div className="rounded-lg border border-dashed border-graphite-300 bg-white px-6 py-12 text-center text-sm text-graphite-500">
+      <div className="rounded-lg border border-dashed border-graphite-300 bg-graphite-50 px-6 py-12 text-center text-sm text-graphite-500">
         {isAdmin
           ? "The current set has no match slots — re-generate from the Team tab."
           : "You have no match scouting assignments in the current set."}
@@ -270,7 +273,7 @@ function MatchView({
         Generated {new Date(matchDoc.generatedAt).toLocaleString()}.
         {isAdmin ? "" : " Scout the listed team for each match."}
       </p>
-      <div className="overflow-x-auto rounded-lg border border-graphite-200 bg-white">
+      <div className="surface-card overflow-x-auto">
         <table className="w-full min-w-max text-left text-sm">
           <thead>
             <tr className="border-b border-graphite-200 text-xs uppercase tracking-wider text-graphite-500">
@@ -288,9 +291,9 @@ function MatchView({
               return (
                 <tr
                   key={`${slot.matchKey}-${slot.teamNumber}`}
-                  className={done ? "bg-graphite-50 opacity-50" : ""}
+                  className={`transition ${done ? "bg-graphite-50 opacity-50" : "hover:bg-graphite-50"}`}
                 >
-                  <td className="font-stat px-3 py-2 font-semibold">
+                  <td className="stat px-3 py-2 font-semibold">
                     {COMP_LEVEL_LABELS[slot.compLevel] ?? slot.compLevel}
                     {slot.matchNumber}
                   </td>
@@ -300,7 +303,7 @@ function MatchView({
                       disabled={!canToggle}
                       onClick={() => void onToggle(key, done)}
                       title={canToggle ? "Tap to cross off / restore" : undefined}
-                      className={`font-stat font-semibold ${done ? "line-through" : ""} ${
+                      className={`stat font-semibold ${done ? "line-through" : ""} ${
                         canToggle ? "hover:text-maroon-600" : ""
                       }`}
                     >

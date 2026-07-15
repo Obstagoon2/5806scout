@@ -194,7 +194,7 @@ export function AssignmentNotifications() {
                 ? `Your scouting match ${slotLabel(slot)} is up now:`
                 : `You're up next in ${slotLabel(slot)}:`}
             </span>{" "}
-            scout team <span className="font-stat font-semibold">{slot.teamNumber}</span>{" "}
+            scout team <span className="stat font-semibold">{slot.teamNumber}</span>{" "}
             ({slot.alliance} alliance).
           </p>
           <span className="flex items-center gap-2">
@@ -209,7 +209,7 @@ export function AssignmentNotifications() {
               onClick={() =>
                 setDismissedMatches((prev) => new Set(prev).add(slot.matchKey))
               }
-              className="rounded-md border border-graphite-200 px-3 py-1 text-xs font-medium text-graphite-600 transition hover:border-graphite-300"
+              className="btn-ghost border border-graphite-200 px-3 py-1"
             >
               Dismiss
             </button>

@@ -14,6 +14,7 @@ import { FirestoreError, doc, getDoc, runTransaction, serverTimestamp } from "fi
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import { LionMark } from "@/components/LionMark";
 
 export default function SignupPage() {
   const router = useRouter();
@@ -149,7 +150,22 @@ export default function SignupPage() {
   }
 
   return (
-    <main className="flex flex-1 items-center justify-center bg-background px-4 py-12">
+    <main className="flex flex-1 flex-col md:flex-row">
+      <div className="hazard-stripe relative flex flex-col justify-between overflow-hidden bg-maroon-700 px-8 py-10 text-white md:w-2/5 md:px-12 md:py-16">
+        <div className="absolute inset-0 bg-maroon-700/85" />
+        <div className="relative flex items-center gap-2.5">
+          <LionMark className="h-9 w-9 text-white" />
+          <span className="text-lg font-semibold tracking-tight">FRC Scouting</span>
+        </div>
+        <div className="relative mt-10 md:mt-0">
+          <p className="stat text-xs uppercase tracking-widest text-maroon-100">Team 5806</p>
+          <h1 className="mt-2 text-2xl font-semibold leading-tight md:text-3xl">
+            Join the crew. Log data that wins alliances.
+          </h1>
+        </div>
+      </div>
+
+      <div className="flex flex-1 items-center justify-center px-4 py-12">
       <div className="w-full max-w-sm">
         <h1 className="text-2xl font-semibold text-graphite-900">
           {asAdmin ? "Create an admin account" : "Create a scout account"}
@@ -211,7 +227,7 @@ export default function SignupPage() {
           </label>
 
           {error && (
-            <p className="rounded-md bg-maroon-50 px-3 py-2 text-sm text-maroon-700">
+            <p className="badge-error rounded-md px-3 py-2 text-sm normal-case tracking-normal">
               {error}
             </p>
           )}
@@ -219,7 +235,7 @@ export default function SignupPage() {
           <button
             type="submit"
             disabled={submitting}
-            className="mt-2 rounded-md bg-maroon-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-maroon-700 disabled:opacity-60"
+            className="btn-primary mt-2"
           >
             {submitting ? "Creating account…" : "Sign up"}
           </button>
@@ -248,12 +264,12 @@ export default function SignupPage() {
           </Link>
         </p>
       </div>
+      </div>
     </main>
   );
 }
 
-const inputClass =
-  "w-full rounded-md border border-graphite-200 bg-white px-3 py-2 text-sm text-graphite-900 outline-none transition focus:border-maroon-400 focus:ring-2 focus:ring-maroon-100";
+const inputClass = "field-input";
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (

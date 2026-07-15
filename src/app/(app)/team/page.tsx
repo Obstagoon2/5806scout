@@ -293,7 +293,8 @@ export default function TeamPage() {
   return (
     <main className="mx-auto flex w-full max-w-2xl flex-col gap-6 px-4 py-8 md:px-6">
       <div>
-        <h1 className="text-xl font-semibold text-graphite-900">
+        <h1 className="flex items-center gap-2.5 text-xl font-semibold text-graphite-900">
+          <span aria-hidden className="h-5 w-1.5 bg-maroon-600" />
           Team {team?.teamNumber ?? profile?.teamId}
           {team?.teamName && team.teamName !== team.teamNumber
             ? ` — ${team.teamName}`
@@ -308,7 +309,7 @@ export default function TeamPage() {
       </div>
 
       {isAdmin && (
-        <div className="flex flex-col gap-2 rounded-lg border border-graphite-200 bg-white p-4">
+        <div className="surface-card flex flex-col gap-2 p-4">
           <p className="text-sm font-medium text-graphite-900">
             Scouting assignments
           </p>
@@ -322,7 +323,7 @@ export default function TeamPage() {
               type="button"
               disabled={!event || activeScouts.length === 0 || event.teams.length === 0}
               onClick={() => void handleAssignPit()}
-              className="rounded-md bg-maroon-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-maroon-700 disabled:opacity-60"
+              className="btn-primary px-4 py-2"
             >
               Assign Pit Scout
             </button>
@@ -330,7 +331,7 @@ export default function TeamPage() {
               type="button"
               disabled={!event || activeScouts.length === 0 || event.matches.length === 0}
               onClick={() => void handleAssignMatch()}
-              className="rounded-md bg-maroon-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-maroon-700 disabled:opacity-60"
+              className="btn-primary px-4 py-2"
             >
               Assign Match Scout
             </button>
@@ -345,13 +346,13 @@ export default function TeamPage() {
       )}
 
       {assignSuccess && (
-        <p className="rounded-md bg-emerald-50 px-3 py-2 text-sm text-emerald-700">
+        <p className="badge-success rounded-md px-3 py-2 text-sm normal-case tracking-normal">
           {assignSuccess}
         </p>
       )}
 
       {isAdmin && (
-        <div className="flex flex-col gap-2 rounded-lg border border-graphite-200 bg-white p-4">
+        <div className="surface-card flex flex-col gap-2 p-4">
           <p className="text-sm font-medium text-graphite-900">Sister team</p>
           {team?.sisterTeamId ? (
             <>
@@ -369,7 +370,7 @@ export default function TeamPage() {
                 type="button"
                 disabled={linkBusy}
                 onClick={() => void handleUnlink()}
-                className="self-start rounded-md border border-maroon-200 px-4 py-2 text-sm font-medium text-maroon-700 transition hover:border-maroon-400 disabled:opacity-60"
+                className="btn-secondary self-start border-maroon-200 px-4 py-2 text-maroon-700 hover:border-maroon-400"
               >
                 {linkBusy ? "Unlinking…" : "Unlink sister team"}
               </button>
@@ -382,9 +383,9 @@ export default function TeamPage() {
                 team&apos;s admin generates a code; the other enters it here.
               </p>
               {linkCode ? (
-                <p className="rounded-md bg-graphite-50 px-3 py-2 text-sm text-graphite-700">
+                <p className="surface-panel rounded-md px-3 py-2 text-sm text-graphite-700">
                   Share this code with their admin (valid for 24 hours):{" "}
-                  <span className="font-stat text-lg font-bold tracking-widest text-graphite-900">
+                  <span className="stat text-lg font-bold tracking-widest text-graphite-900">
                     {linkCode}
                   </span>
                 </p>
@@ -393,7 +394,7 @@ export default function TeamPage() {
                   type="button"
                   disabled={linkBusy}
                   onClick={() => void handleGenerateCode()}
-                  className="self-start rounded-md bg-maroon-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-maroon-700 disabled:opacity-60"
+                  className="btn-primary self-start px-4 py-2"
                 >
                   Generate link code
                 </button>
@@ -404,12 +405,12 @@ export default function TeamPage() {
                   placeholder="Code from your sister team"
                   value={codeInput}
                   onChange={(e) => setCodeInput(e.target.value)}
-                  className="font-stat w-56 rounded-md border border-graphite-200 bg-white px-3 py-2 text-sm uppercase tracking-widest outline-none transition focus:border-maroon-400 focus:ring-2 focus:ring-maroon-100"
+                  className="field-input stat w-56 uppercase tracking-widest"
                 />
                 <button
                   type="submit"
                   disabled={linkBusy || !codeInput.trim()}
-                  className="rounded-md bg-maroon-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-maroon-700 disabled:opacity-60"
+                  className="btn-primary px-4 py-2"
                 >
                   {linkBusy ? "Linking…" : "Link"}
                 </button>
@@ -417,7 +418,7 @@ export default function TeamPage() {
             </>
           )}
           {linkMessage && (
-            <p className="rounded-md bg-emerald-50 px-3 py-2 text-sm text-emerald-700">
+            <p className="badge-success rounded-md px-3 py-2 text-sm normal-case tracking-normal">
               {linkMessage}
             </p>
           )}
@@ -433,7 +434,7 @@ export default function TeamPage() {
                 setShowInvite(true);
                 setInviteSuccess(null);
               }}
-              className="self-start rounded-md bg-maroon-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-maroon-700"
+              className="btn-primary self-start px-4 py-2"
             >
               Add scout
             </button>
@@ -441,7 +442,7 @@ export default function TeamPage() {
           {showInvite && (
             <form
               onSubmit={handleInvite}
-              className="flex flex-col gap-3 rounded-lg border border-graphite-200 bg-white p-4"
+              className="surface-card flex flex-col gap-3 p-4"
             >
               <p className="text-sm font-medium text-graphite-900">
                 Add a scout
@@ -455,7 +456,7 @@ export default function TeamPage() {
                   type="text"
                   value={inviteName}
                   onChange={(e) => setInviteName(e.target.value)}
-                  className="w-full rounded-md border border-graphite-200 bg-white px-3 py-2 text-sm text-graphite-900 outline-none transition focus:border-maroon-400 focus:ring-2 focus:ring-maroon-100"
+                  className="field-input"
                 />
               </label>
               <label className="flex flex-col gap-1.5">
@@ -467,7 +468,7 @@ export default function TeamPage() {
                   type="email"
                   value={inviteEmail}
                   onChange={(e) => setInviteEmail(e.target.value)}
-                  className="w-full rounded-md border border-graphite-200 bg-white px-3 py-2 text-sm text-graphite-900 outline-none transition focus:border-maroon-400 focus:ring-2 focus:ring-maroon-100"
+                  className="field-input"
                 />
               </label>
               <p className="text-xs text-graphite-500">
@@ -478,14 +479,14 @@ export default function TeamPage() {
                 <button
                   type="submit"
                   disabled={inviteSending}
-                  className="rounded-md bg-maroon-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-maroon-700 disabled:opacity-60"
+                  className="btn-primary px-4 py-2"
                 >
                   {inviteSending ? "Sending invite…" : "Send invite"}
                 </button>
                 <button
                   type="button"
                   onClick={() => setShowInvite(false)}
-                  className="rounded-md border border-graphite-200 px-4 py-2 text-sm font-medium text-graphite-600 transition hover:border-graphite-300"
+                  className="btn-secondary px-4 py-2"
                 >
                   Cancel
                 </button>
@@ -496,22 +497,22 @@ export default function TeamPage() {
       )}
 
       {inviteSuccess && (
-        <p className="rounded-md bg-emerald-50 px-3 py-2 text-sm text-emerald-700">
+        <p className="badge-success rounded-md px-3 py-2 text-sm normal-case tracking-normal">
           {inviteSuccess}
         </p>
       )}
 
       {error && (
-        <p className="rounded-md bg-maroon-50 px-3 py-2 text-sm text-maroon-700">
+        <p className="badge-error rounded-md px-3 py-2 text-sm normal-case tracking-normal">
           {error}
         </p>
       )}
 
-      <ul className="divide-y divide-graphite-100 rounded-lg border border-graphite-200 bg-white">
+      <ul className="surface-card divide-y divide-graphite-100">
         {roster.map((member) => (
           <li
             key={member.uid}
-            className="flex items-center justify-between gap-3 px-4 py-3"
+            className="flex items-center justify-between gap-3 px-4 py-3 transition hover:bg-graphite-50"
           >
             <div className={member.active ? "" : "opacity-50"}>
               <p className="text-sm font-medium text-graphite-900">
@@ -546,7 +547,7 @@ export default function TeamPage() {
                 <button
                   type="button"
                   onClick={() => void toggleActive(member)}
-                  className="rounded-md border border-graphite-200 px-2.5 py-1 text-xs font-medium text-graphite-600 transition hover:border-graphite-300"
+                  className="btn-ghost border border-graphite-200 px-2.5 py-1"
                 >
                   {member.active ? "Deactivate" : "Reactivate"}
                 </button>

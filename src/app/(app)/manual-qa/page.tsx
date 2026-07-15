@@ -16,8 +16,7 @@ interface QaTurn {
   error?: string;
 }
 
-const inputClass =
-  "w-full rounded-md border border-graphite-200 bg-white px-3 py-2 text-sm outline-none transition focus:border-maroon-400 focus:ring-2 focus:ring-maroon-100";
+const inputClass = "field-input";
 
 export default function ManualQaPage() {
   const [status, setStatus] = useState<ManualStatus | null>(null);
@@ -86,7 +85,10 @@ export default function ManualQaPage() {
   return (
     <main className="mx-auto flex w-full max-w-2xl flex-col gap-6 px-4 py-8 md:px-6">
       <div>
-        <h1 className="text-xl font-semibold text-graphite-900">Manual Q&amp;A</h1>
+        <h1 className="flex items-center gap-2.5 text-xl font-semibold text-graphite-900">
+          <span aria-hidden className="h-5 w-1.5 bg-maroon-600" />
+          Manual Q&amp;A
+        </h1>
         <p className="mt-1 text-sm text-graphite-500">
           {ready
             ? `Ask rules questions and get cited answers — ${status?.chunkCount} manual sections loaded.`
@@ -100,9 +102,15 @@ export default function ManualQaPage() {
             <p className="self-end rounded-lg bg-maroon-600 px-3 py-2 text-sm text-white">
               {turn.question}
             </p>
-            <div className="self-start rounded-lg border border-graphite-200 bg-white px-3 py-2 text-sm text-graphite-800">
+            <div className="surface-card self-start px-3 py-2 text-sm text-graphite-800">
               {turn.answer === null ? (
-                <span className="text-graphite-400">Checking the manual…</span>
+                <span className="inline-flex items-center gap-2 text-graphite-400">
+                  <span
+                    aria-hidden
+                    className="h-3 w-3 animate-spin-loading rounded-full border-2 border-graphite-300 border-t-maroon-500"
+                  />
+                  Checking the manual…
+                </span>
               ) : turn.error ? (
                 <span className="text-maroon-700">{turn.error}</span>
               ) : (
@@ -112,7 +120,7 @@ export default function ManualQaPage() {
           </div>
         ))}
         {turns.length === 0 && status !== null && (
-          <div className="rounded-lg border border-dashed border-graphite-300 bg-white px-6 py-10 text-center text-sm text-graphite-500">
+          <div className="rounded-lg border border-dashed border-graphite-300 bg-graphite-50 px-6 py-10 text-center text-sm text-graphite-500">
             {ready
               ? "Ask something like “what’s the penalty for pinning?”"
               : "The game manual hasn’t been ingested yet — ask whoever runs the app to load it."}
@@ -132,7 +140,7 @@ export default function ManualQaPage() {
         <button
           type="submit"
           disabled={!ready || asking || !question.trim()}
-          className="shrink-0 rounded-md bg-maroon-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-maroon-700 disabled:opacity-60"
+          className="btn-primary shrink-0 px-4 py-2"
         >
           {asking ? "…" : "Ask"}
         </button>

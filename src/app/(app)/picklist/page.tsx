@@ -175,7 +175,10 @@ export default function PicklistPage() {
   return (
     <main className="flex w-full flex-col gap-6 px-4 py-8 md:px-6">
       <div>
-        <h1 className="text-xl font-semibold text-graphite-900">Picklist</h1>
+        <h1 className="flex items-center gap-2.5 text-xl font-semibold text-graphite-900">
+          <span aria-hidden className="h-5 w-1.5 bg-maroon-600" />
+          Picklist
+        </h1>
         <p className="mt-1 text-sm text-graphite-500">
           {isAdmin
             ? "Drag rows (or use the arrows) to rank alliance picks. Tap the team number or name to strike it once picked."
@@ -184,20 +187,20 @@ export default function PicklistPage() {
       </div>
 
       {saveError && (
-        <p className="rounded-md bg-maroon-50 px-3 py-2 text-sm text-maroon-700">
+        <p className="badge-error rounded-md px-3 py-2 text-sm normal-case tracking-normal">
           {saveError}
         </p>
       )}
 
       {loaded && !event && (
-        <div className="rounded-lg border border-dashed border-graphite-300 bg-white px-6 py-12 text-center text-sm text-graphite-500">
+        <div className="rounded-lg border border-dashed border-graphite-300 bg-graphite-50 px-6 py-12 text-center text-sm text-graphite-500">
           Sync an event on the Event tab first — the picklist ranks the teams at
           your event.
         </div>
       )}
 
       {event && (
-        <div className="overflow-x-auto rounded-lg border border-graphite-200 bg-white">
+        <div className="surface-card overflow-x-auto">
           <table className="w-full min-w-max text-left text-sm">
             <thead>
               <tr className="border-b border-graphite-200 text-xs uppercase tracking-wider text-graphite-500">
@@ -234,9 +237,13 @@ export default function PicklistPage() {
                       }
                       dragFrom.current = null;
                     }}
-                    className={isStruck ? "bg-graphite-50 opacity-50" : ""}
+                    className={`transition ${isStruck ? "bg-graphite-50 opacity-50" : "hover:bg-graphite-50"}`}
                   >
-                    <td className="font-stat px-3 py-2 font-semibold text-graphite-400">
+                    <td
+                      className={`stat px-3 py-2 font-semibold ${
+                        index < 3 && !isStruck ? "text-maroon-600" : "text-graphite-400"
+                      }`}
+                    >
                       {index + 1}
                     </td>
                     <td className="px-3 py-2">
@@ -250,7 +257,7 @@ export default function PicklistPage() {
                             [...doNotPick],
                           )
                         }
-                        className={`font-stat font-semibold ${
+                        className={`stat font-semibold ${
                           isStruck ? "line-through" : ""
                         } ${isAdmin ? "hover:text-maroon-600" : ""}`}
                         title={isAdmin ? "Toggle picked/unavailable" : undefined}
@@ -277,22 +284,22 @@ export default function PicklistPage() {
                         {info?.nickname ?? "—"}
                       </button>
                     </td>
-                    <td className="font-stat px-3 py-2">
+                    <td className="stat px-3 py-2">
                       {eventRanks.get(teamNumber) ?? "—"}
                     </td>
-                    <td className="font-stat px-3 py-2">
+                    <td className="stat px-3 py-2">
                       {info?.epa != null ? info.epa.toFixed(1) : "—"}
                     </td>
-                    <td className="font-stat px-3 py-2">
+                    <td className="stat px-3 py-2">
                       {auto !== null && agg ? auto.toFixed(1) : "—"}
                     </td>
-                    <td className="font-stat px-3 py-2">
+                    <td className="stat px-3 py-2">
                       {teleop !== null && agg ? teleop.toFixed(1) : "—"}
                     </td>
                     <td className="px-3 py-2 text-graphite-600">
                       {agg?.modes.endgame ?? "—"}
                     </td>
-                    <td className="font-stat px-3 py-2">{agg?.matches ?? 0}</td>
+                    <td className="stat px-3 py-2">{agg?.matches ?? 0}</td>
                     {isAdmin && (
                       <td className="px-3 py-2">
                         <span className="flex gap-1">
@@ -337,7 +344,8 @@ export default function PicklistPage() {
       {event && (
         <section className="flex flex-col gap-3">
           <div>
-            <h2 className="text-lg font-semibold text-graphite-900">
+            <h2 className="flex items-center gap-2 text-lg font-semibold text-graphite-900">
+              <span aria-hidden className="h-4 w-1 bg-maroon-600" />
               Do Not Pick
             </h2>
             <p className="mt-0.5 text-sm text-graphite-500">
@@ -346,11 +354,11 @@ export default function PicklistPage() {
             </p>
           </div>
           {doNotPick.length === 0 ? (
-            <p className="rounded-lg border border-dashed border-graphite-300 bg-white px-4 py-6 text-center text-sm text-graphite-500">
+            <p className="rounded-lg border border-dashed border-graphite-300 bg-graphite-50 px-4 py-6 text-center text-sm text-graphite-500">
               No teams marked Do Not Pick.
             </p>
           ) : (
-            <div className="overflow-x-auto rounded-lg border border-maroon-200 bg-white">
+            <div className="surface-card overflow-x-auto border-maroon-200">
               <table className="w-full min-w-max text-left text-sm">
                 <thead>
                   <tr className="border-b border-maroon-100 text-xs uppercase tracking-wider text-graphite-500">
@@ -370,21 +378,21 @@ export default function PicklistPage() {
                     const auto = phaseAvg(agg, AUTO_IDS);
                     const teleop = phaseAvg(agg, TELEOP_IDS);
                     return (
-                      <tr key={teamNumber} className="bg-maroon-50/40">
-                        <td className="font-stat px-3 py-2 font-semibold">
+                      <tr key={teamNumber} className="bg-maroon-50/40 transition hover:bg-maroon-50">
+                        <td className="stat px-3 py-2 font-semibold">
                           {teamNumber}
                         </td>
                         <td className="px-3 py-2">{info?.nickname ?? "—"}</td>
-                        <td className="font-stat px-3 py-2">
+                        <td className="stat px-3 py-2">
                           {info?.epa != null ? info.epa.toFixed(1) : "—"}
                         </td>
-                        <td className="font-stat px-3 py-2">
+                        <td className="stat px-3 py-2">
                           {auto !== null && agg ? auto.toFixed(1) : "—"}
                         </td>
-                        <td className="font-stat px-3 py-2">
+                        <td className="stat px-3 py-2">
                           {teleop !== null && agg ? teleop.toFixed(1) : "—"}
                         </td>
-                        <td className="font-stat px-3 py-2">{agg?.matches ?? 0}</td>
+                        <td className="stat px-3 py-2">{agg?.matches ?? 0}</td>
                         {isAdmin && (
                           <td className="px-3 py-2">
                             <button
