@@ -1,0 +1,163 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-07-14T00:00:00.000Z",
+  "title": "Design System: FRC 5806 Scouting",
+  "extensions": {
+    "colorMeta": {
+      "maroon-600": {
+        "role": "primary",
+        "displayName": "Confident Team Maroon",
+        "canonical": "#7a1a24",
+        "tonalRamp": [
+          "#2e0a0e",
+          "#451015",
+          "#5e141c",
+          "#7a1a24",
+          "#8f1f2b",
+          "#c04a56",
+          "#d8737d",
+          "#e8a2a8"
+        ]
+      },
+      "graphite-600": {
+        "role": "neutral",
+        "displayName": "Graphite",
+        "canonical": "#454a4e",
+        "tonalRamp": [
+          "#17181a",
+          "#232629",
+          "#33373a",
+          "#454a4e",
+          "#5f6569",
+          "#888e94",
+          "#b3b7bb",
+          "#d5d7d9"
+        ]
+      },
+      "neutral-bg": {
+        "role": "neutral",
+        "displayName": "Warm White",
+        "canonical": "#faf7f5",
+        "tonalRamp": ["#faf7f5", "#ffffff"]
+      },
+      "amber-500": {
+        "role": "tertiary",
+        "displayName": "Pending Amber",
+        "canonical": "#d97706",
+        "tonalRamp": ["#d97706", "#fdecd2"]
+      },
+      "green-500": {
+        "role": "tertiary",
+        "displayName": "Done Green",
+        "canonical": "#15803d",
+        "tonalRamp": ["#15803d", "#d9f0e1"]
+      }
+    },
+    "typographyMeta": {
+      "display": { "displayName": "Display", "purpose": "Page-level headings." },
+      "title": { "displayName": "Section Title", "purpose": "Uppercase, wide-tracked section labels and form legends." },
+      "body": { "displayName": "Body", "purpose": "Prose, form labels, descriptions." },
+      "label": { "displayName": "Label", "purpose": "Field labels, badges, nav item text." },
+      "stat": { "displayName": "Stat (Telemetry)", "purpose": "All numeric scouting data — scores, ranks, team IDs, EPA. Never used for prose." }
+    },
+    "shadows": [],
+    "motion": [
+      {
+        "name": "queue-blink",
+        "value": "1s step-start infinite, red #dc2626 <-> white #ffffff",
+        "purpose": "Hard on/off flash for the Pit Dashboard's <5-minute queue alert. The only animated element in the system; no fade, no easing."
+      }
+    ],
+    "breakpoints": [
+      { "name": "md", "value": "768px" }
+    ]
+  },
+  "components": [
+    {
+      "name": "Primary Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "Main call-to-action, e.g. 'Submit match'.",
+      "html": "<button class=\"ds-btn-primary\">Submit match</button>",
+      "css": ".ds-btn-primary { background: #7a1a24; color: #ffffff; font-size: 0.875rem; font-weight: 600; padding: 12px 16px; border: none; border-radius: 6px; transition: background 0.15s; } .ds-btn-primary:hover { background: #5e141c; } .ds-btn-primary:focus-visible { outline: 2px solid #c04a56; outline-offset: 2px; } .ds-btn-primary:disabled { opacity: 0.6; }"
+    },
+    {
+      "name": "Toggle Button (Alliance Picker)",
+      "kind": "button",
+      "refersTo": "button-secondary",
+      "description": "Selectable toggle, e.g. Red/Blue alliance choice — selected state fills solid like a primary button.",
+      "html": "<button class=\"ds-btn-toggle\" aria-pressed=\"true\">Red</button>",
+      "css": ".ds-btn-toggle { background: #ffffff; color: #33373a; font-size: 0.875rem; font-weight: 600; padding: 10px 16px; border: 1px solid #d5d7d9; border-radius: 6px; transition: all 0.15s; } .ds-btn-toggle:hover { border-color: #b3b7bb; } .ds-btn-toggle[aria-pressed='true'] { background: #7a1a24; border-color: #7a1a24; color: #ffffff; }"
+    },
+    {
+      "name": "Text Input",
+      "kind": "input",
+      "refersTo": "input-field",
+      "description": "Standard text/number field used across scouting forms.",
+      "html": "<input class=\"ds-input\" type=\"text\" placeholder=\"Team number\" />",
+      "css": ".ds-input { width: 100%; background: #ffffff; color: #17181a; font-size: 0.875rem; padding: 10px 12px; border: 1px solid #d5d7d9; border-radius: 6px; outline: none; transition: border-color 0.15s, box-shadow 0.15s; } .ds-input:focus { border-color: #c04a56; box-shadow: 0 0 0 2px #f5d0d3; }"
+    },
+    {
+      "name": "Stat Number",
+      "kind": "custom",
+      "refersTo": "typography.stat",
+      "description": "The Telemetry Rule in practice — any numeric scouting value (score, rank, team ID).",
+      "html": "<span class=\"ds-stat\">1234</span>",
+      "css": ".ds-stat { font-family: 'Geist Mono', monospace; font-size: 0.875rem; color: #17181a; }"
+    },
+    {
+      "name": "Card / List Container",
+      "kind": "card",
+      "refersTo": "components.card",
+      "description": "Standard bordered container for recent submissions, assignment lists, etc.",
+      "html": "<div class=\"ds-card\"><div class=\"ds-card-row\"><span class=\"ds-stat\">Q42</span><span>Submitted</span></div></div>",
+      "css": ".ds-card { background: #ffffff; border: 1px solid #d5d7d9; border-radius: 8px; } .ds-card-row { display: flex; align-items: center; justify-content: space-between; padding: 10px 16px; font-size: 0.875rem; } .ds-card-row + .ds-card-row { border-top: 1px solid #eceded; }"
+    },
+    {
+      "name": "Desktop Tab",
+      "kind": "nav",
+      "refersTo": "components.nav-tab",
+      "description": "Top nav tab, active state gets a maroon underline.",
+      "html": "<a class=\"ds-tab ds-tab-active\">Match Scout</a>",
+      "css": ".ds-tab { display: inline-block; padding: 12px 16px; font-size: 0.875rem; font-weight: 500; color: #5f6569; border-bottom: 2px solid transparent; transition: color 0.15s; } .ds-tab:hover { color: #17181a; } .ds-tab-active { color: #5e141c; border-bottom-color: #7a1a24; }"
+    },
+    {
+      "name": "Status Badge",
+      "kind": "chip",
+      "refersTo": "components.status-badge",
+      "description": "Success/error inline status message, e.g. after a form submit.",
+      "html": "<p class=\"ds-badge ds-badge-success\">Submitted — form reset for the next match.</p>",
+      "css": ".ds-badge { border-radius: 6px; padding: 8px 12px; font-size: 0.875rem; } .ds-badge-success { background: #d9f0e1; color: #15803d; } .ds-badge-error { background: #fbeced; color: #5e141c; }"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Lion's Den",
+    "overview": "This is a field-ops console, not a dashboard demo — built to be thumbed through in a loud, bright convention-center pit and reviewed carefully on a laptop the night before eliminations. The system is deliberately unglamorous where glamour would slow someone down: flat surfaces, hard borders, no shadows to squint through, numbers set in monospace so a column of match scores reads like telemetry instead of prose. Maroon and white — Team 5806's colors — carry the team's identity and confidence, appearing at full saturation only where it means something (a primary action, an active tab, the header) rather than washing across every surface. The lion shows up as attitude, not as illustration: sharp corners are avoided in favor of small, consistent radii; the tone is direct and declarative rather than playful.",
+    "keyCharacteristics": [
+      "Flat, bordered surfaces — no drop shadows anywhere in the system",
+      "Maroon reserved for action and emphasis; graphite carries the everyday chrome",
+      "Numeric data (scores, ranks, EPA, match numbers) always renders in monospace",
+      "Small, consistent corner radii (6–8px) — nothing sharp, nothing soft-rounded",
+      "Contrast pushed generously above AA-minimum for high-glare outdoor/convention-hall readability"
+    ],
+    "rules": [
+      { "name": "The Reserved Maroon Rule", "body": "Maroon is for things the user should do or that are currently active — a primary button, an active tab, a required marker. It never fills a background or a card.", "section": "colors" },
+      { "name": "The Telemetry Rule", "body": "Any number that represents scouting data renders in Geist Mono via the font-stat token. Prose and UI labels never do.", "section": "typography" },
+      { "name": "The Flat-By-Default Rule", "body": "No box-shadow anywhere in the system. Depth comes from a 1px graphite-200 border and a white-on-warm-white contrast step.", "section": "elevation" }
+    ],
+    "dos": [
+      "Do reserve maroon-600/maroon-700 for actions and active states only",
+      "Do render every scouting number in Geist Mono via the Stat token",
+      "Do use a 1px graphite-200 border as the only depth cue — no shadows, ever",
+      "Do keep tap targets large (44px minimum) and contrast generous",
+      "Do keep corner radii small and consistent (6–8px)"
+    ],
+    "donts": [
+      "Don't build a generic consumer-SaaS look — no soft gradients, no cute illustrations, no cream/pastel backgrounds",
+      "Don't add box-shadow anywhere",
+      "Don't let maroon fill a background or a card",
+      "Don't use gradient text, glassmorphism, or side-stripe colored borders",
+      "Don't animate anything beyond the queue-blink alert without a strong reason"
+    ]
+  }
+}
