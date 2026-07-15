@@ -42,7 +42,7 @@ export function MobileBottomNav() {
   const items = useVisibleNavItems();
 
   return (
-    <nav className="fixed inset-x-0 bottom-0 z-10 flex overflow-x-auto border-t border-graphite-200 bg-white [scrollbar-width:none]">
+    <nav className="fixed inset-x-0 bottom-0 z-10 flex overflow-x-auto border-t border-graphite-200 bg-white [scrollbar-width:none] md:hidden">
       {items.map((item) => {
         const active = pathname.startsWith(item.href);
         return (
