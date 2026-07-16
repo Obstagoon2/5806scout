@@ -7,8 +7,8 @@ interface LionMarkProps {
 export function LionMark({ className }: LionMarkProps) {
   return (
     <Image
-      src="/logo.png"
-      alt="I Hate Nakul"
+      src="/lion-logo.png"
+      alt="Team 5806 lion crest"
       width={52}
       height={52}
       className={className}

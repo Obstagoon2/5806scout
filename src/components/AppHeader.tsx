@@ -1,10 +1,10 @@
 "use client";
 
 import Link from "next/link";
+import Image from "next/image";
 import { useAuth } from "@/lib/auth/AuthProvider";
 import { auth } from "@/lib/firebase/client";
 import { signOut } from "firebase/auth";
-import { LionMark } from "@/components/LionMark";
 
 export function AppHeader() {
   const { profile } = useAuth();
@@ -14,7 +14,13 @@ export function AppHeader() {
       <div className="hazard-stripe h-1" />
       <div className="flex items-center justify-between bg-maroon-700 px-4 py-3 text-white md:px-6">
         <Link href="/home" className="flex items-center gap-2.5">
-          <LionMark className="h-7 w-7 text-white" />
+          <Image
+            src="/lion-logo.png"
+            alt="Team 5806 lion crest"
+            width={28}
+            height={28}
+            className="h-7 w-7 rounded-md bg-white object-contain"
+          />
           <span className="flex items-baseline gap-2">
             <span className="text-base font-semibold tracking-tight">
               FRC Scouting
