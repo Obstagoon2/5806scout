@@ -1,11 +1,14 @@
 import { describe, expect, it } from "vitest";
 import {
+  eventSearchYear,
   mapMatches,
   mapRankings,
   mapTeams,
   mapVenue,
+  searchEvents,
   teamKeyToNumber,
   type StatboticsTeamEvent,
+  type TbaEventSimple,
   type TbaMatchSimple,
   type TbaTeamSimple,
 } from "./eventData";
@@ -186,5 +189,76 @@ describe("mapRankings", () => {
     ]);
     expect(rows.map((r) => r.teamNumber)).toEqual([222, 333, 111]);
     expect(rows[1].rank).toBeNull();
+  });
+});
+
+describe("eventSearchYear", () => {
+  it("uses an explicit 4-digit year in the query", () => {
+    expect(eventSearchYear("2025 hopper", 2026)).toBe(2025);
+    expect(eventSearchYear("mount olive 2024", 2026)).toBe(2024);
+  });
+
+  it("falls back to the current season", () => {
+    expect(eventSearchYear("hopper", 2026)).toBe(2026);
+    expect(eventSearchYear("team 254", 2026)).toBe(2026);
+  });
+});
+
+describe("searchEvents", () => {
+  const events: TbaEventSimple[] = [
+    {
+      key: "2026njski",
+      name: "FMA District Seneca Event",
+      city: "Tabernacle",
+      state_prov: "NJ",
+      country: "USA",
+      start_date: "2026-03-06",
+      end_date: "2026-03-08",
+    },
+    {
+      key: "2026njfla",
+      name: "FMA District Mount Olive Event",
+      city: "Flanders",
+      state_prov: "NJ",
+      country: "USA",
+      start_date: "2026-03-13",
+      end_date: "2026-03-15",
+    },
+    {
+      key: "2026casj",
+      name: "Silicon Valley Regional",
+      city: "San Jose",
+      state_prov: "CA",
+      country: "USA",
+      start_date: "2026-04-01",
+      end_date: "2026-04-04",
+    },
+  ];
+
+  it("matches by name tokens across fields", () => {
+    const results = searchEvents(events, "mount olive");
+    expect(results.map((r) => r.key)).toEqual(["2026njfla"]);
+    expect(results[0]).toMatchObject({
+      name: "FMA District Mount Olive Event",
+      location: "Flanders, NJ",
+      startDate: "2026-03-13",
+    });
+  });
+
+  it("matches by event key and ranks exact keys first", () => {
+    expect(searchEvents(events, "2026njski")[0].key).toBe("2026njski");
+    expect(searchEvents(events, "njski")[0].key).toBe("2026njski");
+  });
+
+  it("matches by city/state and returns empty for no hits", () => {
+    expect(searchEvents(events, "san jose").map((r) => r.key)).toEqual([
+      "2026casj",
+    ]);
+    expect(searchEvents(events, "einstein")).toEqual([]);
+    expect(searchEvents(events, "   ")).toEqual([]);
+  });
+
+  it("caps results at the limit", () => {
+    expect(searchEvents(events, "2026", 2)).toHaveLength(2);
   });
 });

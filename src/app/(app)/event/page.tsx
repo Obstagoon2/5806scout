@@ -1,10 +1,14 @@
 "use client";
 
 import { useAuth } from "@/lib/auth/AuthProvider";
-import type { EventData, EventRankingRow } from "@/lib/eventData";
+import type {
+  EventData,
+  EventRankingRow,
+  EventSearchResult,
+} from "@/lib/eventData";
 import { db } from "@/lib/firebase/client";
 import { doc, onSnapshot, setDoc } from "firebase/firestore";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 type View = "teams" | "schedule" | "ranking" | "map";
 
@@ -24,7 +28,6 @@ const inputClass = "field-input stat w-44";
 
 export default function EventPage() {
   const { profile, dataTeamId } = useAuth();
-  const [eventCode, setEventCode] = useState("");
   const [view, setView] = useState<View>("teams");
   const [event, setEvent] = useState<EventData | null>(null);
   const [loaded, setLoaded] = useState(false);
@@ -63,7 +66,6 @@ export default function EventPage() {
         syncedAt: Date.now(),
       });
       setStatus({ state: "idle" });
-      setEventCode("");
     } catch {
       setStatus({ state: "error", message: "Sync failed — are you online?" });
     }
@@ -87,27 +89,11 @@ export default function EventPage() {
         </div>
 
         {isAdmin && (
-          <form
-            onSubmit={(e) => {
-              e.preventDefault();
-              void handleSync(eventCode);
-            }}
-            className="flex items-center gap-2"
-          >
-            <input
-              type="text"
-              placeholder="Event code, e.g. 2026njski"
-              value={eventCode}
-              onChange={(e) => setEventCode(e.target.value)}
-              className={inputClass}
+          <div className="flex items-center gap-2">
+            <EventSearchBox
+              syncing={status.state === "syncing"}
+              onSync={(key) => void handleSync(key)}
             />
-            <button
-              type="submit"
-              disabled={status.state === "syncing" || !eventCode.trim()}
-              className="btn-primary px-4 py-2"
-            >
-              {status.state === "syncing" ? "Syncing…" : "Sync"}
-            </button>
             {event && (
               <button
                 type="button"
@@ -118,7 +104,7 @@ export default function EventPage() {
                 Refresh
               </button>
             )}
-          </form>
+          </div>
         )}
       </div>
 
@@ -132,7 +118,7 @@ export default function EventPage() {
         <div className="rounded-lg border border-dashed border-graphite-300 bg-graphite-50 px-6 py-12 text-center text-sm text-graphite-500">
           No event synced yet.
           {isAdmin
-            ? " Enter your event code above (find it on thebluealliance.com)."
+            ? " Search for your event above by name or TBA code."
             : " Ask your admin to sync the event."}
         </div>
       )}
@@ -173,6 +159,186 @@ export default function EventPage() {
         </>
       )}
     </main>
+  );
+}
+
+const SEARCH_DEBOUNCE_MS = 250;
+
+function formatEventDates(start: string, end: string): string {
+  const s = new Date(`${start}T00:00:00`);
+  const e = new Date(`${end}T00:00:00`);
+  if (Number.isNaN(s.getTime()) || Number.isNaN(e.getTime())) return "";
+  const md = (d: Date) =>
+    d.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+  return s.getTime() === e.getTime() ? md(s) : `${md(s)} – ${md(e)}`;
+}
+
+/**
+ * TBA-style typeahead: search events by name or code, pick one to sync it.
+ * Typing an exact event key (e.g. "2026njski") and submitting still works.
+ */
+function EventSearchBox({
+  syncing,
+  onSync,
+}: {
+  syncing: boolean;
+  onSync: (key: string) => void;
+}) {
+  const [query, setQuery] = useState("");
+  const [results, setResults] = useState<EventSearchResult[]>([]);
+  const [open, setOpen] = useState(false);
+  const [active, setActive] = useState(0);
+  const boxRef = useRef<HTMLFormElement | null>(null);
+  // Set when choose() writes the picked event's name into the input — that
+  // programmatic change must not kick off another search.
+  const skipSearchRef = useRef(false);
+
+  useEffect(() => {
+    if (skipSearchRef.current) {
+      skipSearchRef.current = false;
+      return;
+    }
+    const q = query.trim();
+    if (q.length < 2) return;
+    const controller = new AbortController();
+    const timer = setTimeout(() => {
+      void (async () => {
+        try {
+          const res = await fetch(
+            `/api/event-search?q=${encodeURIComponent(q)}`,
+            { signal: controller.signal },
+          );
+          const body = (await res.json()) as { results?: EventSearchResult[] };
+          if (!res.ok || !body.results) return;
+          setResults(body.results);
+          setActive(0);
+          setOpen(true);
+        } catch {
+          // Aborted by a newer keystroke or offline — keep what's shown.
+        }
+      })();
+    }, SEARCH_DEBOUNCE_MS);
+    return () => {
+      controller.abort();
+      clearTimeout(timer);
+    };
+  }, [query]);
+
+  useEffect(() => {
+    function onPointerDown(e: PointerEvent) {
+      if (boxRef.current && !boxRef.current.contains(e.target as Node)) {
+        setOpen(false);
+      }
+    }
+    window.addEventListener("pointerdown", onPointerDown);
+    return () => window.removeEventListener("pointerdown", onPointerDown);
+  }, []);
+
+  function handleQueryChange(value: string) {
+    setQuery(value);
+    if (value.trim().length < 2) {
+      setResults([]);
+      setOpen(false);
+    }
+  }
+
+  function choose(result: EventSearchResult) {
+    skipSearchRef.current = true;
+    setQuery(result.name);
+    setOpen(false);
+    onSync(result.key);
+  }
+
+  function handleSubmit() {
+    const q = query.trim().toLowerCase();
+    // An exact event key syncs directly; otherwise take the highlighted match.
+    if (/^\d{4}[a-z0-9]+$/.test(q)) {
+      setOpen(false);
+      onSync(q);
+    } else if (results[active]) {
+      choose(results[active]);
+    } else if (results[0]) {
+      choose(results[0]);
+    }
+  }
+
+  function handleKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      if (results.length > 0) {
+        setOpen(true);
+        setActive((i) => Math.min(i + 1, results.length - 1));
+      }
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      setActive((i) => Math.max(i - 1, 0));
+    } else if (e.key === "Escape") {
+      setOpen(false);
+    }
+  }
+
+  return (
+    <form
+      ref={boxRef}
+      onSubmit={(e) => {
+        e.preventDefault();
+        handleSubmit();
+      }}
+      className="flex items-center gap-2"
+    >
+      <div className="relative">
+        <input
+          type="text"
+          role="combobox"
+          aria-expanded={open}
+          aria-autocomplete="list"
+          aria-controls="event-search-listbox"
+          placeholder="Search events — name or code"
+          value={query}
+          onChange={(e) => handleQueryChange(e.target.value)}
+          onKeyDown={handleKeyDown}
+          onFocus={() => results.length > 0 && setOpen(true)}
+          className="field-input w-64"
+        />
+        {open && results.length > 0 && (
+          <ul
+            id="event-search-listbox"
+            role="listbox"
+            className="surface-card absolute left-0 right-0 top-full z-20 mt-1 max-h-80 overflow-y-auto p-1"
+          >
+            {results.map((result, i) => (
+              <li key={result.key} role="option" aria-selected={i === active}>
+                <button
+                  type="button"
+                  onClick={() => choose(result)}
+                  onMouseEnter={() => setActive(i)}
+                  className={`flex w-full flex-col rounded px-2.5 py-1.5 text-left transition ${
+                    i === active ? "bg-graphite-100" : ""
+                  }`}
+                >
+                  <span className="truncate text-sm font-medium text-graphite-900">
+                    {result.name}
+                  </span>
+                  <span className="truncate text-xs text-graphite-500">
+                    <span className="stat">{result.key}</span>
+                    {result.location && ` · ${result.location}`}
+                    {formatEventDates(result.startDate, result.endDate) &&
+                      ` · ${formatEventDates(result.startDate, result.endDate)}`}
+                  </span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+      <button
+        type="submit"
+        disabled={syncing || query.trim().length < 2}
+        className="btn-primary px-4 py-2"
+      >
+        {syncing ? "Syncing…" : "Sync"}
+      </button>
+    </form>
   );
 }
 

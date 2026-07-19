@@ -206,3 +206,77 @@ export function mapMatches(tbaMatches: readonly TbaMatchSimple[]): EventMatch[] 
         a.matchNumber - b.matchNumber,
     );
 }
+
+// --- Event search (TBA-style typeahead on the Event tab) ---
+
+/** Subset of TBA `/events/{year}/simple`. */
+export interface TbaEventSimple {
+  key: string;
+  name: string;
+  city: string | null;
+  state_prov: string | null;
+  country: string | null;
+  start_date: string; // "YYYY-MM-DD"
+  end_date: string;
+}
+
+export interface EventSearchResult {
+  key: string;
+  name: string;
+  /** "City, State" best-effort — empty string when TBA has neither. */
+  location: string;
+  startDate: string;
+  endDate: string;
+}
+
+/**
+ * Year the query targets: an explicit 4-digit year anywhere in the query
+ * wins (e.g. "2025 hopper"), otherwise the current season.
+ */
+export function eventSearchYear(query: string, currentYear: number): number {
+  const match = query.match(/\b(19|20)\d{2}\b/);
+  return match ? Number(match[0]) : currentYear;
+}
+
+/**
+ * Filter + rank a season's events for a typeahead query. Every whitespace
+ * token must appear somewhere in the event's key/name/location; exact-ish
+ * matches (key or name prefix) rank first, then alphabetical by name.
+ */
+export function searchEvents(
+  events: readonly TbaEventSimple[],
+  query: string,
+  limit = 12,
+): EventSearchResult[] {
+  const tokens = query.toLowerCase().split(/\s+/).filter(Boolean);
+  if (tokens.length === 0) return [];
+
+  const scored = events.flatMap((event) => {
+    const key = event.key.toLowerCase();
+    const name = event.name.toLowerCase();
+    const haystack = [key, name, event.city, event.state_prov, event.country]
+      .filter(Boolean)
+      .join(" ")
+      .toLowerCase();
+    if (!tokens.every((t) => haystack.includes(t))) return [];
+    const first = tokens[0];
+    const rank =
+      key === first || key.replace(/^\d{4}/, "") === first
+        ? 0
+        : name.startsWith(first)
+          ? 1
+          : 2;
+    return [{ event, rank }];
+  });
+
+  return scored
+    .sort((a, b) => a.rank - b.rank || a.event.name.localeCompare(b.event.name))
+    .slice(0, limit)
+    .map(({ event }) => ({
+      key: event.key,
+      name: event.name,
+      location: [event.city, event.state_prov].filter(Boolean).join(", "),
+      startDate: event.start_date,
+      endDate: event.end_date,
+    }));
+}
