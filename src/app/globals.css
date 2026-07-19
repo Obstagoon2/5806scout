@@ -9,9 +9,17 @@
  * no box-shadow anywhere; depth comes from borders and a two-layer neutral
  * system (page bg vs. white surface vs. graphite-50 panel).
  */
+/* Class-based dark mode: the ThemeToggle stamps .dark on <html> (persisted in
+   localStorage, defaulting to the system preference). */
+@custom-variant dark (&:where(.dark, .dark *));
+
 :root {
+  color-scheme: light;
   --background: #faf7f5;
   --foreground: #201a1b;
+  /* Primary content layer — white in light mode; use bg-surface, not
+     bg-white, so cards/panels/inputs flip together in dark mode. */
+  --surface: #ffffff;
 
   /* Maroon — primary/brand, used for actions and emphasis, not backgrounds. */
   --color-maroon-50: #fbeced;
@@ -45,9 +53,43 @@
   --color-sky-700: #0369a1;
 }
 
+/* Dark theme: same two-layer neutral system, inverted. The graphite scale
+   flips end-for-end so existing utilities (text-graphite-900 headings,
+   border-graphite-200, hover:bg-graphite-50…) keep their *roles* without
+   touching every page. Maroon stays maroon — brand chrome (header, buttons,
+   hazard stripe) reads identically in both themes; only the light tint
+   layers (badge/chip backgrounds) get dark equivalents. */
+.dark {
+  color-scheme: dark;
+  --background: #131415;
+  --foreground: #ece9e7;
+  --surface: #1d2022;
+
+  --color-graphite-50: #212426;
+  --color-graphite-100: #2a2d30;
+  --color-graphite-200: #383c40;
+  --color-graphite-300: #4b5054;
+  --color-graphite-400: #83898f;
+  --color-graphite-500: #9aa0a5;
+  --color-graphite-600: #c0c4c8;
+  --color-graphite-700: #d8dadc;
+  --color-graphite-800: #e8e9ea;
+  --color-graphite-900: #f4f4f5;
+
+  /* Tint layers: only ever used as chip/badge/hover backgrounds under dark
+     text, so they can flip globally without breaking any solid-fill use. */
+  --color-maroon-50: #3a1216;
+  --color-amber-100: #3a2a10;
+  --color-green-100: #14301f;
+  --color-sky-50: #0e2a3d;
+  --color-sky-200: #1e3a52;
+  --color-sky-300: #27506e;
+}
+
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
+  --color-surface: var(--surface);
   --color-maroon-50: var(--color-maroon-50);
   --color-maroon-100: var(--color-maroon-100);
   --color-maroon-200: var(--color-maroon-200);
@@ -121,7 +163,7 @@ body {
   /* Two-layer neutral system: white surface for primary content, graphite-50
      panel for secondary chrome (toolbars, filters, summary strips). */
   .surface-card {
-    @apply rounded-lg border border-graphite-200 bg-white;
+    @apply rounded-lg border border-graphite-200 bg-surface;
   }
   .surface-panel {
     @apply rounded-lg border border-graphite-200 bg-graphite-50;
@@ -131,14 +173,14 @@ body {
     @apply inline-flex items-center justify-center gap-2 rounded-md bg-maroon-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-maroon-700 active:bg-maroon-800 disabled:cursor-not-allowed disabled:opacity-60;
   }
   .btn-secondary {
-    @apply inline-flex items-center justify-center gap-2 rounded-md border border-graphite-200 bg-white px-4 py-3 text-sm font-semibold text-graphite-700 transition hover:border-graphite-300 hover:bg-graphite-50 active:bg-graphite-100 disabled:cursor-not-allowed disabled:opacity-60;
+    @apply inline-flex items-center justify-center gap-2 rounded-md border border-graphite-200 bg-surface px-4 py-3 text-sm font-semibold text-graphite-700 transition hover:border-graphite-300 hover:bg-graphite-50 active:bg-graphite-100 disabled:cursor-not-allowed disabled:opacity-60;
   }
   .btn-ghost {
     @apply inline-flex items-center justify-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-semibold text-graphite-600 transition hover:bg-graphite-100 hover:text-graphite-900;
   }
 
   .field-input {
-    @apply w-full rounded-md border border-graphite-200 bg-white px-3 py-2.5 text-sm text-graphite-900 outline-none transition placeholder:text-graphite-400 focus:border-maroon-400 focus:ring-2 focus:ring-maroon-100;
+    @apply w-full rounded-md border border-graphite-200 bg-surface px-3 py-2.5 text-sm text-graphite-900 outline-none transition placeholder:text-graphite-400 focus:border-maroon-400 focus:ring-2 focus:ring-maroon-100 dark:focus:ring-maroon-800;
   }
 
   .section-title {
@@ -149,13 +191,13 @@ body {
     @apply inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide;
   }
   .badge-success {
-    @apply bg-green-100 text-green-500;
+    @apply bg-green-100 text-green-500 dark:text-green-400;
   }
   .badge-warning {
-    @apply bg-amber-100 text-amber-500;
+    @apply bg-amber-100 text-amber-500 dark:text-amber-400;
   }
   .badge-error {
-    @apply bg-maroon-50 text-maroon-700;
+    @apply bg-maroon-50 text-maroon-700 dark:text-maroon-300;
   }
   .badge-admin {
     @apply bg-maroon-900/40 text-white;

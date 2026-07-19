@@ -228,7 +228,7 @@ function QueueingCard({
       className={`flex flex-col items-center justify-center gap-2 rounded-lg border-2 p-5 text-center transition ${
         alert
           ? "animate-queue-blink border-red-600"
-          : "border-graphite-200 bg-white"
+          : "border-graphite-200 bg-surface"
       }`}
     >
       <h2 className="text-xs font-semibold uppercase tracking-widest opacity-70">
@@ -358,7 +358,7 @@ function TodoCard({ teamId }: { teamId: string }) {
                 onClick={() =>
                   void save(items.filter((i) => i.id !== item.id))
                 }
-                className="rounded px-2 py-1 text-xs font-medium text-graphite-400 transition hover:bg-maroon-50 hover:text-maroon-700"
+                className="rounded px-2 py-1 text-xs font-medium text-graphite-400 transition hover:bg-maroon-50 hover:text-maroon-700 dark:hover:text-maroon-300"
               >
                 ✕
               </button>

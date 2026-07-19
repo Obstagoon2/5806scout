@@ -304,7 +304,7 @@ function MatchView({
                       onClick={() => void onToggle(key, done)}
                       title={canToggle ? "Tap to cross off / restore" : undefined}
                       className={`stat font-semibold ${done ? "line-through" : ""} ${
-                        canToggle ? "hover:text-maroon-600" : ""
+                        canToggle ? "hover:text-maroon-600 dark:hover:text-maroon-400" : ""
                       }`}
                     >
                       {slot.teamNumber}
@@ -313,7 +313,7 @@ function MatchView({
                   <td className="px-3 py-2">
                     <span
                       className={
-                        slot.alliance === "red" ? "text-maroon-700" : "text-sky-700"
+                        slot.alliance === "red" ? "text-maroon-700 dark:text-maroon-300" : "text-sky-700 dark:text-sky-300"
                       }
                     >
                       {slot.alliance}

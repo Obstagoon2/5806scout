@@ -37,12 +37,12 @@ export default function HomePage() {
             <li key={item.href}>
               <Link
                 href={item.href}
-                className="surface-card group flex items-center justify-between px-4 py-3.5 text-sm font-medium text-graphite-800 transition hover:border-maroon-400 hover:text-maroon-700"
+                className="surface-card group flex items-center justify-between px-4 py-3.5 text-sm font-medium text-graphite-800 transition hover:border-maroon-400 hover:text-maroon-700 dark:hover:text-maroon-300"
               >
                 {item.label}
                 <span
                   aria-hidden
-                  className="text-graphite-300 transition group-hover:translate-x-0.5 group-hover:text-maroon-500"
+                  className="text-graphite-300 transition group-hover:translate-x-0.5 group-hover:text-maroon-500 dark:group-hover:text-maroon-400"
                 >
                   →
                 </span>

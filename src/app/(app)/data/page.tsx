@@ -7,23 +7,16 @@ import {
   counterFieldIds,
   type MatchSubmission,
 } from "@/lib/aggregate";
-import { MATCH_SCOUT_SECTIONS } from "@/lib/matchScoutSchema";
+import { useScoutForms } from "@/lib/useScoutForms";
 import { collection, onSnapshot, orderBy, query } from "firebase/firestore";
 import { useEffect, useMemo, useState } from "react";
 
 type View = "raw" | "teams";
 
-// Label lookup for counter/select columns, from the schema itself.
-const FIELD_LABELS: Record<string, string> = Object.fromEntries(
-  MATCH_SCOUT_SECTIONS.flatMap((s) =>
-    s.fields.map((f) => [f.id, `${s.title}: ${f.label}`]),
-  ),
-);
-
-const COUNTER_IDS = counterFieldIds(MATCH_SCOUT_SECTIONS);
-
 export default function DataPage() {
   const { dataTeamId } = useAuth();
+  // Columns follow this team's customized schema, not the static defaults.
+  const { matchSections } = useScoutForms();
   const [view, setView] = useState<View>("raw");
   const [submissions, setSubmissions] = useState<MatchSubmission[]>([]);
   const [teamFilter, setTeamFilter] = useState("");
@@ -65,9 +58,24 @@ export default function DataPage() {
     [submissions, teamFilter, scoutFilter],
   );
 
+  // Label lookup for counter/select columns, from the schema itself.
+  const fieldLabels = useMemo<Record<string, string>>(
+    () =>
+      Object.fromEntries(
+        matchSections.flatMap((s) =>
+          s.fields.map((f) => [f.id, `${s.title}: ${f.label}`]),
+        ),
+      ),
+    [matchSections],
+  );
+  const counterIds = useMemo(
+    () => counterFieldIds(matchSections),
+    [matchSections],
+  );
+
   const aggregates = useMemo(
-    () => aggregateByTeam(MATCH_SCOUT_SECTIONS, submissions),
-    [submissions],
+    () => aggregateByTeam(matchSections, submissions),
+    [matchSections, submissions],
   );
 
   return (
@@ -128,9 +136,9 @@ export default function DataPage() {
                   <th className="px-3 py-2.5">Match</th>
                   <th className="px-3 py-2.5">Team</th>
                   <th className="px-3 py-2.5">Alliance</th>
-                  {COUNTER_IDS.map((id) => (
+                  {counterIds.map((id) => (
                     <th key={id} className="px-3 py-2.5">
-                      {FIELD_LABELS[id]}
+                      {fieldLabels[id]}
                     </th>
                   ))}
                   <th className="px-3 py-2.5">Scout</th>
@@ -145,14 +153,14 @@ export default function DataPage() {
                       <span
                         className={`inline-block rounded px-1.5 py-0.5 text-xs font-semibold ${
                           s.alliance === "red"
-                            ? "bg-maroon-50 text-maroon-700"
-                            : "bg-sky-50 text-sky-700"
+                            ? "bg-maroon-50 text-maroon-700 dark:text-maroon-300"
+                            : "bg-sky-50 text-sky-700 dark:text-sky-300"
                         }`}
                       >
                         {s.alliance}
                       </span>
                     </td>
-                    {COUNTER_IDS.map((id) => (
+                    {counterIds.map((id) => (
                       <td key={id} className="stat px-3 py-2">
                         {typeof s.values[id] === "number" ? (s.values[id] as number) : 0}
                       </td>
@@ -163,7 +171,7 @@ export default function DataPage() {
                 {filtered.length === 0 && (
                   <tr>
                     <td
-                      colSpan={4 + COUNTER_IDS.length}
+                      colSpan={4 + counterIds.length}
                       className="px-3 py-8 text-center text-graphite-400"
                     >
                       No submissions{submissions.length > 0 ? " match the filters" : " yet"}.
@@ -183,9 +191,9 @@ export default function DataPage() {
               <tr className="border-b border-graphite-200 text-xs uppercase tracking-wider text-graphite-500">
                 <th className="px-3 py-2.5">Team</th>
                 <th className="px-3 py-2.5">Matches</th>
-                {COUNTER_IDS.map((id) => (
+                {counterIds.map((id) => (
                   <th key={id} className="px-3 py-2.5">
-                    Avg {FIELD_LABELS[id]}
+                    Avg {fieldLabels[id]}
                   </th>
                 ))}
                 <th className="px-3 py-2.5">Typical endgame</th>
@@ -196,7 +204,7 @@ export default function DataPage() {
                 <tr key={agg.team} className="transition hover:bg-graphite-50">
                   <td className="stat px-3 py-2 font-semibold">{agg.team}</td>
                   <td className="stat px-3 py-2">{agg.matches}</td>
-                  {COUNTER_IDS.map((id) => (
+                  {counterIds.map((id) => (
                     <td key={id} className="stat px-3 py-2">
                       {(agg.averages[id] ?? 0).toFixed(1)}
                     </td>
@@ -209,7 +217,7 @@ export default function DataPage() {
               {aggregates.length === 0 && (
                 <tr>
                   <td
-                    colSpan={3 + COUNTER_IDS.length}
+                    colSpan={3 + counterIds.length}
                     className="px-3 py-8 text-center text-graphite-400"
                   >
                     No submissions yet.

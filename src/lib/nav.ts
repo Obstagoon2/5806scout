@@ -16,4 +16,5 @@ export const NAV_ITEMS: NavItem[] = [
   { href: "/data", label: "Data" },
   { href: "/manual-qa", label: "Manual Q&A" },
   { href: "/team", label: "Team" },
+  { href: "/form-settings", label: "Form Setup", adminOnly: true },
 ];

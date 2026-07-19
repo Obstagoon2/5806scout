@@ -16,7 +16,7 @@ export function GoogleSignInButton({
       type="button"
       onClick={onClick}
       disabled={disabled}
-      className="flex items-center justify-center gap-2.5 rounded-md border border-graphite-200 bg-white px-4 py-2.5 text-sm font-semibold text-graphite-700 transition hover:bg-graphite-50 disabled:opacity-60"
+      className="flex items-center justify-center gap-2.5 rounded-md border border-graphite-200 bg-surface px-4 py-2.5 text-sm font-semibold text-graphite-700 transition hover:bg-graphite-50 disabled:opacity-60"
     >
       <svg aria-hidden viewBox="0 0 24 24" className="h-4 w-4">
         <path

@@ -15,7 +15,7 @@ export function SchemaForm({ sections, values, onChange }: SchemaFormProps) {
     <div className="flex flex-col gap-8">
       {sections.map((section) => (
         <fieldset key={section.title} className="flex flex-col gap-4">
-          <legend className="mb-1 flex items-center gap-2 text-xs font-semibold uppercase tracking-widest text-maroon-700">
+          <legend className="mb-1 flex items-center gap-2 text-xs font-semibold uppercase tracking-widest text-maroon-700 dark:text-maroon-300">
             <span aria-hidden className="h-2.5 w-1 bg-maroon-600" />
             {section.title}
           </legend>
@@ -175,7 +175,7 @@ function Field({
                   className={`rounded-full border px-3.5 py-2 text-sm font-medium transition ${
                     isOn
                       ? "border-maroon-600 bg-maroon-600 text-white"
-                      : "border-graphite-200 bg-white text-graphite-700 hover:border-graphite-300"
+                      : "border-graphite-200 bg-surface text-graphite-700 hover:border-graphite-300"
                   }`}
                 >
                   {option}
@@ -202,7 +202,7 @@ function Labeled({
     <label className="flex flex-col gap-1.5">
       <span className="text-sm font-medium text-graphite-700">
         {label}
-        {required && <span className="ml-0.5 text-maroon-600">*</span>}
+        {required && <span className="ml-0.5 text-maroon-600 dark:text-maroon-400">*</span>}
       </span>
       {children}
     </label>

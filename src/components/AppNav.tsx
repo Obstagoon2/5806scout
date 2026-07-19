@@ -15,7 +15,7 @@ export function DesktopTabs() {
   const items = useVisibleNavItems();
 
   return (
-    <nav className="hidden border-b border-graphite-200 bg-white px-6 md:flex">
+    <nav className="hidden border-b border-graphite-200 bg-surface px-6 md:flex">
       {items.map((item) => {
         const active = pathname.startsWith(item.href);
         return (
@@ -25,7 +25,7 @@ export function DesktopTabs() {
             aria-current={active ? "page" : undefined}
             className={`relative border-b-2 px-4 py-3 text-sm font-medium transition ${
               active
-                ? "border-maroon-600 text-maroon-700"
+                ? "border-maroon-600 text-maroon-700 dark:text-maroon-300"
                 : "border-transparent text-graphite-500 hover:border-graphite-200 hover:text-graphite-900"
             }`}
           >
@@ -42,7 +42,7 @@ export function MobileBottomNav() {
   const items = useVisibleNavItems();
 
   return (
-    <nav className="fixed inset-x-0 bottom-0 z-10 flex overflow-x-auto border-t border-graphite-200 bg-white [scrollbar-width:none] md:hidden">
+    <nav className="fixed inset-x-0 bottom-0 z-10 flex overflow-x-auto border-t border-graphite-200 bg-surface [scrollbar-width:none] md:hidden">
       {items.map((item) => {
         const active = pathname.startsWith(item.href);
         return (
@@ -51,7 +51,7 @@ export function MobileBottomNav() {
             href={item.href}
             aria-current={active ? "page" : undefined}
             className={`flex min-w-[64px] flex-1 flex-col items-center gap-1 py-2.5 text-[11px] font-medium leading-tight transition ${
-              active ? "text-maroon-700" : "text-graphite-500"
+              active ? "text-maroon-700 dark:text-maroon-300" : "text-graphite-500"
             }`}
           >
             <span

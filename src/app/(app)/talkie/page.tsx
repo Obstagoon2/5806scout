@@ -32,9 +32,9 @@ type StatusFilter = TalkieStatus | "all" | "mine";
 const inputClass = "field-input";
 
 const STATUS_STYLES: Record<TalkieStatus, string> = {
-  open: "bg-amber-100 text-amber-900",
-  assigned: "bg-sky-50 text-sky-700",
-  done: "bg-green-100 text-green-700",
+  open: "bg-amber-100 text-amber-900 dark:text-amber-200",
+  assigned: "bg-sky-50 text-sky-700 dark:text-sky-300",
+  done: "bg-green-100 text-green-700 dark:text-green-300",
 };
 
 export default function TalkiePage() {
@@ -403,7 +403,7 @@ export default function TalkiePage() {
                     <select
                       value={request.assigneeUid ?? ""}
                       onChange={(e) => handleAssign(request, e.target.value)}
-                      className="rounded-md border border-graphite-200 bg-white px-2 py-1 text-xs outline-none transition focus:border-maroon-400 focus:ring-2 focus:ring-maroon-100"
+                      className="rounded-md border border-graphite-200 bg-surface px-2 py-1 text-xs outline-none transition focus:border-maroon-400 focus:ring-2 focus:ring-maroon-100"
                     >
                       <option value="">Unassigned</option>
                       {roster.map((member) => (
@@ -445,7 +445,7 @@ export default function TalkiePage() {
                     </button>
                   )}
                   {awaitingOther && (
-                    <span className="rounded bg-amber-100 px-2 py-1 text-xs font-medium text-amber-900">
+                    <span className="rounded bg-amber-100 px-2 py-1 text-xs font-medium text-amber-900 dark:text-amber-200">
                       {request.doneByAdmin
                         ? `Waiting for ${
                             request.assigneeName ??
@@ -459,7 +459,7 @@ export default function TalkiePage() {
                     <button
                       type="button"
                       onClick={() => void handleDelete(request)}
-                      className="btn-ghost ml-auto border border-maroon-200 text-maroon-700 hover:bg-maroon-50"
+                      className="btn-ghost ml-auto border border-maroon-200 dark:border-maroon-700 text-maroon-700 dark:text-maroon-300 hover:bg-maroon-50"
                     >
                       Delete
                     </button>

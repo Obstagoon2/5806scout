@@ -112,7 +112,7 @@ export default function ManualQaPage() {
                   Checking the manual…
                 </span>
               ) : turn.error ? (
-                <span className="text-maroon-700">{turn.error}</span>
+                <span className="text-maroon-700 dark:text-maroon-300">{turn.error}</span>
               ) : (
                 <span className="whitespace-pre-wrap">{turn.answer}</span>
               )}

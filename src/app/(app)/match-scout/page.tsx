@@ -3,8 +3,12 @@
 import { SchemaForm } from "@/components/SchemaForm";
 import { useAuth } from "@/lib/auth/AuthProvider";
 import { db } from "@/lib/firebase/client";
-import { emptyValues, type FormValues } from "@/lib/formSchema";
-import { MATCH_SCOUT_SECTIONS } from "@/lib/matchScoutSchema";
+import {
+  emptyValues,
+  missingRequiredFields,
+  type FormValues,
+} from "@/lib/formSchema";
+import { useScoutForms } from "@/lib/useScoutForms";
 import {
   addDoc,
   collection,
@@ -34,14 +38,22 @@ type Status =
 
 export default function MatchScoutPage() {
   const { profile, user, dataTeamId } = useAuth();
+  // This team's customized schema (falls back to defaults until loaded).
+  const { matchSections } = useScoutForms();
   const [matchNumber, setMatchNumber] = useState("");
   const [scoutedTeam, setScoutedTeam] = useState("");
   const [alliance, setAlliance] = useState<Alliance | null>(null);
   const [values, setValues] = useState<FormValues>(() =>
-    emptyValues(MATCH_SCOUT_SECTIONS),
+    emptyValues(matchSections),
   );
   const [status, setStatus] = useState<Status>({ state: "idle" });
   const [recent, setRecent] = useState<RecentSubmission[]>([]);
+
+  useEffect(() => {
+    // If the customization arrives (or changes) mid-entry, add keys for any
+    // new fields without losing tallies already counted.
+    setValues((prev) => ({ ...emptyValues(matchSections), ...prev }));
+  }, [matchSections]);
 
   useEffect(() => {
     // Submissions land in the shared store so a sister pair pools its data.
@@ -81,6 +93,14 @@ export default function MatchScoutPage() {
       return;
     }
 
+    // The default match form has no required fields, but Form Setup lets an
+    // admin add required custom questions — enforce them like pit scout does.
+    const missing = missingRequiredFields(matchSections, values);
+    if (missing.length > 0) {
+      setStatus({ state: "error", message: `Missing: ${missing.join(", ")}` });
+      return;
+    }
+
     setStatus({ state: "saving" });
     try {
       await addDoc(collection(db, "teams", dataTeamId, "matchScouting"), {
@@ -97,7 +117,7 @@ export default function MatchScoutPage() {
       // usually watches the same station), clear team + tallies.
       setMatchNumber(String(match + 1));
       setScoutedTeam("");
-      setValues(emptyValues(MATCH_SCOUT_SECTIONS));
+      setValues(emptyValues(matchSections));
       setStatus({ state: "saved" });
     } catch (err) {
       setStatus({
@@ -125,7 +145,7 @@ export default function MatchScoutPage() {
         <div className="grid grid-cols-2 gap-3">
           <label className="flex flex-col gap-1.5">
             <span className="text-sm font-medium text-graphite-700">
-              Match #<span className="ml-0.5 text-maroon-600">*</span>
+              Match #<span className="ml-0.5 text-maroon-600 dark:text-maroon-400">*</span>
             </span>
             <input
               type="text"
@@ -137,7 +157,7 @@ export default function MatchScoutPage() {
           </label>
           <label className="flex flex-col gap-1.5">
             <span className="text-sm font-medium text-graphite-700">
-              Team #<span className="ml-0.5 text-maroon-600">*</span>
+              Team #<span className="ml-0.5 text-maroon-600 dark:text-maroon-400">*</span>
             </span>
             <input
               type="text"
@@ -155,7 +175,7 @@ export default function MatchScoutPage() {
           className="flex flex-col gap-1.5"
         >
           <span className="text-sm font-medium text-graphite-700">
-            Alliance<span className="ml-0.5 text-maroon-600">*</span>
+            Alliance<span className="ml-0.5 text-maroon-600 dark:text-maroon-400">*</span>
           </span>
           <div className="grid grid-cols-2 gap-2">
             <button
@@ -165,7 +185,7 @@ export default function MatchScoutPage() {
               className={`rounded-md border px-4 py-2.5 text-sm font-semibold transition ${
                 alliance === "red"
                   ? "border-maroon-600 bg-maroon-600 text-white"
-                  : "border-graphite-200 bg-white text-graphite-700 hover:border-graphite-300"
+                  : "border-graphite-200 bg-surface text-graphite-700 hover:border-graphite-300"
               }`}
             >
               Red
@@ -177,7 +197,7 @@ export default function MatchScoutPage() {
               className={`rounded-md border px-4 py-2.5 text-sm font-semibold transition ${
                 alliance === "blue"
                   ? "border-sky-700 bg-sky-700 text-white"
-                  : "border-graphite-200 bg-white text-graphite-700 hover:border-graphite-300"
+                  : "border-graphite-200 bg-surface text-graphite-700 hover:border-graphite-300"
               }`}
             >
               Blue
@@ -186,7 +206,7 @@ export default function MatchScoutPage() {
         </div>
 
         <SchemaForm
-          sections={MATCH_SCOUT_SECTIONS}
+          sections={matchSections}
           values={values}
           onChange={(id, value) => {
             setValues((prev) => ({ ...prev, [id]: value }));

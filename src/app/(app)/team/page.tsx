@@ -370,7 +370,7 @@ export default function TeamPage() {
                 type="button"
                 disabled={linkBusy}
                 onClick={() => void handleUnlink()}
-                className="btn-secondary self-start border-maroon-200 px-4 py-2 text-maroon-700 hover:border-maroon-400"
+                className="btn-secondary self-start border-maroon-200 dark:border-maroon-700 px-4 py-2 text-maroon-700 dark:text-maroon-300 hover:border-maroon-400"
               >
                 {linkBusy ? "Unlinking…" : "Unlink sister team"}
               </button>
@@ -525,21 +525,21 @@ export default function TeamPage() {
             </div>
             <div className="flex items-center gap-2">
               {member.teamId !== profile?.teamId && (
-                <span className="rounded bg-sky-50 px-1.5 py-0.5 text-xs font-semibold text-sky-700">
+                <span className="rounded bg-sky-50 px-1.5 py-0.5 text-xs font-semibold text-sky-700 dark:text-sky-300">
                   {team?.sisterTeamNumber ?? member.teamId}
                 </span>
               )}
               <span
                 className={`rounded px-1.5 py-0.5 text-xs font-semibold ${
                   member.role === "admin"
-                    ? "bg-maroon-50 text-maroon-700"
+                    ? "bg-maroon-50 text-maroon-700 dark:text-maroon-300"
                     : "bg-graphite-100 text-graphite-600"
                 }`}
               >
                 {member.role}
               </span>
               {!member.active && (
-                <span className="rounded bg-amber-100 px-1.5 py-0.5 text-xs font-semibold text-amber-900">
+                <span className="rounded bg-amber-100 px-1.5 py-0.5 text-xs font-semibold text-amber-900 dark:text-amber-200">
                   inactive
                 </span>
               )}

@@ -272,7 +272,7 @@ function MapView({
           href={mapsHref}
           target="_blank"
           rel="noreferrer"
-          className="mt-2 inline-block text-sm font-medium text-maroon-600 hover:text-maroon-700"
+          className="mt-2 inline-block text-sm font-medium text-maroon-600 dark:text-maroon-400 hover:text-maroon-700 dark:hover:text-maroon-300"
         >
           Open in Google Maps ↗
         </a>
@@ -554,10 +554,10 @@ function AllianceCell({
           key={t}
           className={
             t === myNumber
-              ? "rounded bg-amber-100 px-1 text-amber-900"
+              ? "rounded bg-amber-100 px-1 text-amber-900 dark:text-amber-200"
               : color === "red"
-                ? "text-maroon-700"
-                : "text-sky-700"
+                ? "text-maroon-700 dark:text-maroon-300"
+                : "text-sky-700 dark:text-sky-300"
           }
         >
           {t}

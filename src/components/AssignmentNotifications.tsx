@@ -183,7 +183,7 @@ export function AssignmentNotifications() {
           className={`flex flex-wrap items-center justify-between gap-2 rounded-lg border px-4 py-2.5 ${
             position === 0
               ? "border-red-300 bg-red-50"
-              : "border-green-200 bg-green-100/50"
+              : "border-green-200 dark:border-green-900 bg-green-100/50"
           }`}
         >
           <p
@@ -226,7 +226,7 @@ export function AssignmentNotifications() {
             <span className="font-semibold">New talkie assignment:</span>{" "}
             {assignment.title}
             {assignment.createdByName && (
-              <span className="text-sky-700"> — from {assignment.createdByName}</span>
+              <span className="text-sky-700 dark:text-sky-300"> — from {assignment.createdByName}</span>
             )}
           </p>
           <span className="flex items-center gap-2">
@@ -240,7 +240,7 @@ export function AssignmentNotifications() {
             <button
               type="button"
               onClick={() => void dismiss(assignment.id, "assigneeSeen")}
-              className="rounded-md border border-sky-200 px-3 py-1 text-xs font-medium text-sky-700 transition hover:border-sky-300"
+              className="rounded-md border border-sky-200 px-3 py-1 text-xs font-medium text-sky-700 dark:text-sky-300 transition hover:border-sky-300"
             >
               Dismiss
             </button>
@@ -253,7 +253,7 @@ export function AssignmentNotifications() {
           role="status"
           className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-amber-200 bg-amber-50 px-4 py-2.5"
         >
-          <p className="text-sm text-amber-900">
+          <p className="text-sm text-amber-900 dark:text-amber-200">
             <span className="font-semibold">Ready for your sign-off:</span>{" "}
             {confirmation.title}
             <span className="text-amber-700">

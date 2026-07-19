@@ -134,7 +134,7 @@ export default function LoginPage() {
                   setError(null);
                   setMode("forgot");
                 }}
-                className="text-center text-sm font-medium text-maroon-600 hover:text-maroon-700"
+                className="text-center text-sm font-medium text-maroon-600 dark:text-maroon-400 hover:text-maroon-700 dark:hover:text-maroon-300"
               >
                 Forgot password?
               </button>
@@ -158,7 +158,7 @@ export default function LoginPage() {
 
         <p className="mt-6 text-center text-sm text-graphite-500">
           Need an account?{" "}
-          <Link href="/signup" className="font-medium text-maroon-600 hover:text-maroon-700">
+          <Link href="/signup" className="font-medium text-maroon-600 dark:text-maroon-400 hover:text-maroon-700 dark:hover:text-maroon-300">
             Sign up
           </Link>
         </p>
@@ -238,7 +238,7 @@ function ForgotPasswordForm({ onBack }: { onBack: () => void }) {
         <button
           type="button"
           onClick={onBack}
-          className="text-center text-sm font-medium text-maroon-600 hover:text-maroon-700"
+          className="text-center text-sm font-medium text-maroon-600 dark:text-maroon-400 hover:text-maroon-700 dark:hover:text-maroon-300"
         >
           Back to log in
         </button>

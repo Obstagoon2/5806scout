@@ -200,3 +200,11 @@ Blunt and tactile where the interaction is the point (buttons, toggles), crisp a
 - **Don't** let maroon fill a background or a card — it covers a button, an underline, or a header band at most.
 - **Don't** use gradient text, glassmorphism, or side-stripe colored borders — none of that fits a flat, bordered, telemetry-driven system.
 - **Don't** animate anything beyond the queue-blink alert without a strong reason; state changes here are instant and declarative, not choreographed.
+
+## Dark mode (added 2026-07-18)
+
+Class-based: a `.dark` class on `<html>` (ThemeToggle in the AppHeader, persisted to `localStorage.theme`, defaulting to the system preference via a pre-hydration script in the root layout). Implementation lives entirely in `globals.css`:
+
+- `--surface` token (white in light, `#1d2022` in dark) replaces raw `bg-white` for cards/panels/inputs — use `bg-surface`, never `bg-white`, for content surfaces.
+- The graphite scale inverts end-for-end in `.dark`, so graphite utilities keep their *roles* (900 = primary text, 200 = borders, 50 = panel layer) in both themes.
+- Maroon stays maroon in both themes (brand chrome: header, buttons, hazard stripe). Light tint layers (`maroon-50`, `amber-100`, `green-100`, `sky-50/200/300`) flip to dark equivalents globally; accent *text* on dark surfaces uses explicit `dark:` variants (e.g. `text-maroon-700 dark:text-maroon-300`).

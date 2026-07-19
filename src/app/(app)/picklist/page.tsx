@@ -9,7 +9,7 @@ import {
 } from "@/lib/aggregate";
 import type { EventData, EventRankingRow } from "@/lib/eventData";
 import { db } from "@/lib/firebase/client";
-import { MATCH_SCOUT_SECTIONS } from "@/lib/matchScoutSchema";
+import { useScoutForms } from "@/lib/useScoutForms";
 import {
   moveItem,
   moveToDoNotPick,
@@ -22,15 +22,6 @@ import {
 import { collection, doc, onSnapshot, setDoc } from "firebase/firestore";
 import { useEffect, useMemo, useRef, useState } from "react";
 
-// Reference stat columns: total scored per phase keeps the table readable —
-// the Data tab has the full per-goal breakdown.
-const AUTO_IDS = counterFieldIds(MATCH_SCOUT_SECTIONS).filter((id) =>
-  id.startsWith("autoScored"),
-);
-const TELEOP_IDS = counterFieldIds(MATCH_SCOUT_SECTIONS).filter((id) =>
-  id.startsWith("teleopScored"),
-);
-
 function phaseAvg(agg: TeamAggregate | undefined, ids: string[]): number | null {
   if (!agg) return null;
   return ids.reduce((sum, id) => sum + (agg.averages[id] ?? 0), 0);
@@ -38,6 +29,8 @@ function phaseAvg(agg: TeamAggregate | undefined, ids: string[]): number | null 
 
 export default function PicklistPage() {
   const { profile, dataTeamId } = useAuth();
+  // Stats follow this team's customized schema, not the static defaults.
+  const { matchSections } = useScoutForms();
   const [event, setEvent] = useState<EventData | null>(null);
   const [picklist, setPicklist] = useState<PicklistDoc | null>(null);
   const [submissions, setSubmissions] = useState<MatchSubmission[]>([]);
@@ -133,11 +126,26 @@ export default function PicklistPage() {
   );
   const aggregates = useMemo(() => {
     const byTeam = new Map<string, TeamAggregate>();
-    for (const agg of aggregateByTeam(MATCH_SCOUT_SECTIONS, submissions)) {
+    for (const agg of aggregateByTeam(matchSections, submissions)) {
       byTeam.set(agg.team, agg);
     }
     return byTeam;
-  }, [submissions]);
+  }, [matchSections, submissions]);
+
+  // Reference stat columns: total scored per phase keeps the table readable —
+  // the Data tab has the full per-goal breakdown.
+  const autoIds = useMemo(
+    () =>
+      counterFieldIds(matchSections).filter((id) => id.startsWith("autoScored")),
+    [matchSections],
+  );
+  const teleopIds = useMemo(
+    () =>
+      counterFieldIds(matchSections).filter((id) =>
+        id.startsWith("teleopScored"),
+      ),
+    [matchSections],
+  );
 
   const isAdmin = profile?.role === "admin";
 
@@ -221,8 +229,8 @@ export default function PicklistPage() {
                 const info = teamsByNumber.get(teamNumber);
                 const agg = aggregates.get(String(teamNumber));
                 const isStruck = struck.has(teamNumber);
-                const auto = phaseAvg(agg, AUTO_IDS);
-                const teleop = phaseAvg(agg, TELEOP_IDS);
+                const auto = phaseAvg(agg, autoIds);
+                const teleop = phaseAvg(agg, teleopIds);
                 return (
                   <tr
                     key={teamNumber}
@@ -241,7 +249,7 @@ export default function PicklistPage() {
                   >
                     <td
                       className={`stat px-3 py-2 font-semibold ${
-                        index < 3 && !isStruck ? "text-maroon-600" : "text-graphite-400"
+                        index < 3 && !isStruck ? "text-maroon-600 dark:text-maroon-400" : "text-graphite-400"
                       }`}
                     >
                       {index + 1}
@@ -259,7 +267,7 @@ export default function PicklistPage() {
                         }
                         className={`stat font-semibold ${
                           isStruck ? "line-through" : ""
-                        } ${isAdmin ? "hover:text-maroon-600" : ""}`}
+                        } ${isAdmin ? "hover:text-maroon-600 dark:hover:text-maroon-400" : ""}`}
                         title={isAdmin ? "Toggle picked/unavailable" : undefined}
                       >
                         {teamNumber}
@@ -277,7 +285,7 @@ export default function PicklistPage() {
                           )
                         }
                         className={`text-left ${isStruck ? "line-through" : ""} ${
-                          isAdmin ? "hover:text-maroon-600" : ""
+                          isAdmin ? "hover:text-maroon-600 dark:hover:text-maroon-400" : ""
                         }`}
                         title={isAdmin ? "Toggle picked/unavailable" : undefined}
                       >
@@ -325,7 +333,7 @@ export default function PicklistPage() {
                             type="button"
                             aria-label={`Move ${teamNumber} to Do Not Pick`}
                             onClick={() => handleDoNotPick(teamNumber)}
-                            className="rounded border border-maroon-200 px-2 py-1 text-xs font-medium text-maroon-700 transition hover:border-maroon-400"
+                            className="rounded border border-maroon-200 dark:border-maroon-700 px-2 py-1 text-xs font-medium text-maroon-700 dark:text-maroon-300 transition hover:border-maroon-400"
                             title="Move to Do Not Pick"
                           >
                             DNP
@@ -358,7 +366,7 @@ export default function PicklistPage() {
               No teams marked Do Not Pick.
             </p>
           ) : (
-            <div className="surface-card overflow-x-auto border-maroon-200">
+            <div className="surface-card overflow-x-auto border-maroon-200 dark:border-maroon-700">
               <table className="w-full min-w-max text-left text-sm">
                 <thead>
                   <tr className="border-b border-maroon-100 text-xs uppercase tracking-wider text-graphite-500">
@@ -375,8 +383,8 @@ export default function PicklistPage() {
                   {doNotPick.map((teamNumber) => {
                     const info = teamsByNumber.get(teamNumber);
                     const agg = aggregates.get(String(teamNumber));
-                    const auto = phaseAvg(agg, AUTO_IDS);
-                    const teleop = phaseAvg(agg, TELEOP_IDS);
+                    const auto = phaseAvg(agg, autoIds);
+                    const teleop = phaseAvg(agg, teleopIds);
                     return (
                       <tr key={teamNumber} className="bg-maroon-50/40 transition hover:bg-maroon-50">
                         <td className="stat px-3 py-2 font-semibold">

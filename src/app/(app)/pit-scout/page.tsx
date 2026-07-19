@@ -8,7 +8,7 @@ import {
   missingRequiredFields,
   type FormValues,
 } from "@/lib/formSchema";
-import { PIT_SCOUT_SECTIONS } from "@/lib/pitScoutSchema";
+import { useScoutForms } from "@/lib/useScoutForms";
 import {
   collection,
   doc,
@@ -27,13 +27,21 @@ type Status =
 
 export default function PitScoutPage() {
   const { profile, user, dataTeamId } = useAuth();
+  // This team's customized schema (falls back to defaults until loaded).
+  const { pitSections } = useScoutForms();
   const [scoutedTeams, setScoutedTeams] = useState<string[]>([]);
   const [teamInput, setTeamInput] = useState("");
   const [activeTeam, setActiveTeam] = useState<string | null>(null);
   const [values, setValues] = useState<FormValues>(() =>
-    emptyValues(PIT_SCOUT_SECTIONS),
+    emptyValues(pitSections),
   );
   const [status, setStatus] = useState<Status>({ state: "idle" });
+
+  useEffect(() => {
+    // If the customization arrives (or changes) mid-entry, add keys for any
+    // new fields without losing what's already typed.
+    setValues((prev) => ({ ...emptyValues(pitSections), ...prev }));
+  }, [pitSections]);
 
   useEffect(() => {
     // Pit forms live in the shared store so a sister pair pools its data.
@@ -59,15 +67,15 @@ export default function PitScoutPage() {
     const existing = snapshot.data();
     setValues(
       existing?.values
-        ? { ...emptyValues(PIT_SCOUT_SECTIONS), ...existing.values }
-        : emptyValues(PIT_SCOUT_SECTIONS),
+        ? { ...emptyValues(pitSections), ...existing.values }
+        : emptyValues(pitSections),
     );
   }
 
   async function handleSave() {
     if (!profile || !user || !activeTeam || !dataTeamId) return;
 
-    const missing = missingRequiredFields(PIT_SCOUT_SECTIONS, values);
+    const missing = missingRequiredFields(pitSections, values);
     if (missing.length > 0) {
       setStatus({ state: "error", message: `Missing: ${missing.join(", ")}` });
       return;
@@ -75,13 +83,19 @@ export default function PitScoutPage() {
 
     setStatus({ state: "saving" });
     try {
-      await setDoc(doc(db, "teams", dataTeamId, "pitScouting", activeTeam), {
-        scoutedTeam: activeTeam,
-        values,
-        scoutName: profile.fullName,
-        scoutUid: user.uid,
-        updatedAt: serverTimestamp(),
-      });
+      // merge: two scouts editing the same robot offline both land their
+      // fields on sync instead of the last save wiping the other's work.
+      await setDoc(
+        doc(db, "teams", dataTeamId, "pitScouting", activeTeam),
+        {
+          scoutedTeam: activeTeam,
+          values,
+          scoutName: profile.fullName,
+          scoutUid: user.uid,
+          updatedAt: serverTimestamp(),
+        },
+        { merge: true },
+      );
       setStatus({ state: "saved" });
     } catch (err) {
       setStatus({
@@ -136,7 +150,7 @@ export default function PitScoutPage() {
               className={`stat rounded-full border px-3 py-1.5 text-sm transition ${
                 team === activeTeam
                   ? "border-maroon-600 bg-maroon-600 text-white"
-                  : "border-graphite-200 bg-white text-graphite-700 hover:border-graphite-300"
+                  : "border-graphite-200 bg-surface text-graphite-700 hover:border-graphite-300"
               }`}
             >
               {team}
@@ -152,7 +166,7 @@ export default function PitScoutPage() {
           </h2>
 
           <SchemaForm
-            sections={PIT_SCOUT_SECTIONS}
+            sections={pitSections}
             values={values}
             onChange={(id, value) => {
               setValues((prev) => ({ ...prev, [id]: value }));
