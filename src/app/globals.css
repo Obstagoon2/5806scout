@@ -61,7 +61,7 @@
    layers (badge/chip backgrounds) get dark equivalents. */
 .dark {
   color-scheme: dark;
-  --background: #131415;
+  --background: #1C1C1E;
   --foreground: #ece9e7;
   --surface: #1d2022;
 

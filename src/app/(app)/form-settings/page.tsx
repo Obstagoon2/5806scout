@@ -293,9 +293,22 @@ export default function FormSettingsPage() {
                     <button
                       type="button"
                       onClick={() => removeQuestion(field.id)}
-                      className="btn-ghost shrink-0"
+                      aria-label={`Remove ${field.label}`}
+                      title="Remove question"
+                      className="shrink-0 rounded-md p-1.5 text-graphite-500 transition hover:bg-maroon-50 hover:text-maroon-600 dark:hover:text-maroon-400"
                     >
-                      Remove
+                      <svg
+                        aria-hidden
+                        viewBox="0 0 24 24"
+                        className="h-4 w-4"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      >
+                        <path d="M3 6h18M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2m2 0v14a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V6m5 5v6m4-6v6" />
+                      </svg>
                     </button>
                   </li>
                 ))}
