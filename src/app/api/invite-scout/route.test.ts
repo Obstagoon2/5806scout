@@ -68,7 +68,7 @@ describe("POST /api/invite-scout", () => {
     );
     expect(res.status).toBe(200);
     expect(mockInviteScout).toHaveBeenCalledWith("tok", "Ada", "a@b.com");
-    const body = await res.json();
+    const body = (await res.json()) as { invited: string };
     expect(body.invited).toBe("a@b.com");
   });
 
@@ -81,7 +81,7 @@ describe("POST /api/invite-scout", () => {
       req({ fullName: "Ada", email: "a@b.com" }, "Bearer tok"),
     );
     expect(res.status).toBe(403);
-    const body = await res.json();
+    const body = (await res.json()) as { error: string };
     expect(body.error).toBe("Only team admins can add scouts.");
   });
 
@@ -92,7 +92,7 @@ describe("POST /api/invite-scout", () => {
       req({ fullName: "Ada", email: "a@b.com" }, "Bearer tok"),
     );
     expect(res.status).toBe(500);
-    const body = await res.json();
+    const body = (await res.json()) as { error: string };
     expect(body.error).toBe("Invite failed — try again.");
   });
 });

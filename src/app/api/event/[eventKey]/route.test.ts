@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import type { EventData } from "@/lib/eventData";
 import { GET } from "./route";
 
 vi.mock("@/lib/serverConfig", () => ({
@@ -28,21 +29,19 @@ describe("GET /api/event/[eventKey]", () => {
   it("returns 503 when TBA_API_KEY is not configured", async () => {
     mockGetServerConfig.mockReturnValue({
       tbaApiKey: null,
-      anthropicApiKey: null,
-      manualQaModel: "test",
+      manualQaRagUrl: "https://rag.test",
     });
 
     const res = await GET(new Request("http://test"), params("2026test"));
     expect(res.status).toBe(503);
-    const body = await res.json();
+    const body = (await res.json()) as { error: string };
     expect(body.error).toMatch(/TBA_API_KEY/);
   });
 
   it("returns 400 for an invalid event code", async () => {
     mockGetServerConfig.mockReturnValue({
       tbaApiKey: "key",
-      anthropicApiKey: null,
-      manualQaModel: "test",
+      manualQaRagUrl: "https://rag.test",
     });
 
     const res = await GET(new Request("http://test"), params("bad key!"));
@@ -52,8 +51,7 @@ describe("GET /api/event/[eventKey]", () => {
   it("returns 404 when TBA reports the event doesn't exist", async () => {
     mockGetServerConfig.mockReturnValue({
       tbaApiKey: "key",
-      anthropicApiKey: null,
-      manualQaModel: "test",
+      manualQaRagUrl: "https://rag.test",
     });
     vi.stubGlobal(
       "fetch",
@@ -67,22 +65,20 @@ describe("GET /api/event/[eventKey]", () => {
   it("returns 502 when TBA rejects the API key", async () => {
     mockGetServerConfig.mockReturnValue({
       tbaApiKey: "bad-key",
-      anthropicApiKey: null,
-      manualQaModel: "test",
+      manualQaRagUrl: "https://rag.test",
     });
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse({}, 401)));
 
     const res = await GET(new Request("http://test"), params("2026test"));
     expect(res.status).toBe(502);
-    const body = await res.json();
+    const body = (await res.json()) as { error: string };
     expect(body.error).toMatch(/TBA_API_KEY/);
   });
 
   it("returns 502 on a generic TBA failure", async () => {
     mockGetServerConfig.mockReturnValue({
       tbaApiKey: "key",
-      anthropicApiKey: null,
-      manualQaModel: "test",
+      manualQaRagUrl: "https://rag.test",
     });
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse({}, 500)));
 
@@ -93,22 +89,20 @@ describe("GET /api/event/[eventKey]", () => {
   it("returns 502 when fetch throws (network failure)", async () => {
     mockGetServerConfig.mockReturnValue({
       tbaApiKey: "key",
-      anthropicApiKey: null,
-      manualQaModel: "test",
+      manualQaRagUrl: "https://rag.test",
     });
     vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new Error("network down")));
 
     const res = await GET(new Request("http://test"), params("2026test"));
     expect(res.status).toBe(502);
-    const body = await res.json();
+    const body = (await res.json()) as { error: string };
     expect(body.error).toMatch(/Could not reach The Blue Alliance/);
   });
 
   it("degrades gracefully to no EPA when Statbotics fails, but still syncs teams", async () => {
     mockGetServerConfig.mockReturnValue({
       tbaApiKey: "key",
-      anthropicApiKey: null,
-      manualQaModel: "test",
+      manualQaRagUrl: "https://rag.test",
     });
 
     const fetchMock = vi.fn(async (url: string) => {
@@ -140,7 +134,7 @@ describe("GET /api/event/[eventKey]", () => {
 
     const res = await GET(new Request("http://test"), params("2026test"));
     expect(res.status).toBe(200);
-    const body = await res.json();
+    const body = (await res.json()) as EventData;
     expect(body.teams[0].epa).toBeNull();
     expect(body.eventName).toBe("Test Event");
   });
@@ -148,8 +142,7 @@ describe("GET /api/event/[eventKey]", () => {
   it("syncs teams, matches, and venue on success", async () => {
     mockGetServerConfig.mockReturnValue({
       tbaApiKey: "key",
-      anthropicApiKey: null,
-      manualQaModel: "test",
+      manualQaRagUrl: "https://rag.test",
     });
 
     const fetchMock = vi.fn(async (url: string) => {
@@ -178,9 +171,9 @@ describe("GET /api/event/[eventKey]", () => {
 
     const res = await GET(new Request("http://test"), params("2026test"));
     expect(res.status).toBe(200);
-    const body = await res.json();
+    const body = (await res.json()) as EventData;
     expect(body.eventKey).toBe("2026test");
     expect(body.teams[0].epa).toBeCloseTo(41.7);
-    expect(body.venue.name).toBe("Some HS");
+    expect(body.venue?.name).toBe("Some HS");
   });
 });

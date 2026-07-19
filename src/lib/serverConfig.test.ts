@@ -3,22 +3,22 @@ import { getServerConfig } from "./serverConfig";
 
 const ORIGINAL_ENV = { ...process.env };
 
+const DEFAULT_RAG_URL = "https://soft-hill-26e4.nakul-sethi-212.workers.dev";
+
 describe("getServerConfig", () => {
   beforeEach(() => {
     delete process.env.TBA_API_KEY;
-    delete process.env.ANTHROPIC_API_KEY;
-    delete process.env.MANUAL_QA_MODEL;
+    delete process.env.MANUAL_QA_RAG_URL;
   });
 
   afterEach(() => {
     process.env = { ...ORIGINAL_ENV };
   });
 
-  it("returns null for unset optional keys and the default model", () => {
+  it("returns null for unset optional keys and the default RAG worker URL", () => {
     expect(getServerConfig()).toEqual({
       tbaApiKey: null,
-      anthropicApiKey: null,
-      manualQaModel: "claude-haiku-4-5-20251001",
+      manualQaRagUrl: DEFAULT_RAG_URL,
     });
   });
 
@@ -27,15 +27,13 @@ describe("getServerConfig", () => {
     expect(getServerConfig().tbaApiKey).toBeNull();
   });
 
-  it("reads configured values, including a custom model override", () => {
+  it("reads configured values, including a custom RAG worker URL", () => {
     process.env.TBA_API_KEY = "tba-key";
-    process.env.ANTHROPIC_API_KEY = "anthropic-key";
-    process.env.MANUAL_QA_MODEL = "claude-custom";
+    process.env.MANUAL_QA_RAG_URL = "https://rag.example.com";
 
     expect(getServerConfig()).toEqual({
       tbaApiKey: "tba-key",
-      anthropicApiKey: "anthropic-key",
-      manualQaModel: "claude-custom",
+      manualQaRagUrl: "https://rag.example.com",
     });
   });
 });

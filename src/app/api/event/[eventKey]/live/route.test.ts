@@ -28,8 +28,7 @@ describe("GET /api/event/[eventKey]/live", () => {
   it("returns 503 when TBA_API_KEY is not configured", async () => {
     mockGetServerConfig.mockReturnValue({
       tbaApiKey: null,
-      anthropicApiKey: null,
-      manualQaModel: "test",
+      manualQaRagUrl: "https://rag.test",
     });
 
     const res = await GET(new Request("http://test"), params("2026test"));
@@ -39,8 +38,7 @@ describe("GET /api/event/[eventKey]/live", () => {
   it("returns 400 for an invalid event code", async () => {
     mockGetServerConfig.mockReturnValue({
       tbaApiKey: "key",
-      anthropicApiKey: null,
-      manualQaModel: "test",
+      manualQaRagUrl: "https://rag.test",
     });
 
     const res = await GET(new Request("http://test"), params("../etc"));
@@ -50,8 +48,7 @@ describe("GET /api/event/[eventKey]/live", () => {
   it("returns 404 when the event isn't found", async () => {
     mockGetServerConfig.mockReturnValue({
       tbaApiKey: "key",
-      anthropicApiKey: null,
-      manualQaModel: "test",
+      manualQaRagUrl: "https://rag.test",
     });
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse({}, 404)));
 
@@ -62,8 +59,7 @@ describe("GET /api/event/[eventKey]/live", () => {
   it("returns 502 on a non-ok TBA response", async () => {
     mockGetServerConfig.mockReturnValue({
       tbaApiKey: "key",
-      anthropicApiKey: null,
-      manualQaModel: "test",
+      manualQaRagUrl: "https://rag.test",
     });
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse({}, 500)));
 
@@ -74,8 +70,7 @@ describe("GET /api/event/[eventKey]/live", () => {
   it("returns 502 when the network request throws", async () => {
     mockGetServerConfig.mockReturnValue({
       tbaApiKey: "key",
-      anthropicApiKey: null,
-      manualQaModel: "test",
+      manualQaRagUrl: "https://rag.test",
     });
     vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new Error("boom")));
 
@@ -86,8 +81,7 @@ describe("GET /api/event/[eventKey]/live", () => {
   it("returns mapped matches and a fetchedAt timestamp on success", async () => {
     mockGetServerConfig.mockReturnValue({
       tbaApiKey: "key",
-      anthropicApiKey: null,
-      manualQaModel: "test",
+      manualQaRagUrl: "https://rag.test",
     });
     vi.stubGlobal(
       "fetch",
@@ -111,7 +105,7 @@ describe("GET /api/event/[eventKey]/live", () => {
 
     const res = await GET(new Request("http://test"), params("2026test"));
     expect(res.status).toBe(200);
-    const body = await res.json();
+    const body = (await res.json()) as { matches: unknown[]; fetchedAt: number };
     expect(body.matches).toHaveLength(1);
     expect(typeof body.fetchedAt).toBe("number");
   });

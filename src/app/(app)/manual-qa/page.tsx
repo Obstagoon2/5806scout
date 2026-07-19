@@ -27,8 +27,8 @@ export default function ManualQaPage() {
   useEffect(() => {
     let cancelled = false;
     fetch("/api/manual-qa")
-      .then((res) => res.json())
-      .then((body: ManualStatus) => {
+      .then((res) => res.json() as Promise<ManualStatus>)
+      .then((body) => {
         if (!cancelled) setStatus(body);
       })
       .catch(() => {

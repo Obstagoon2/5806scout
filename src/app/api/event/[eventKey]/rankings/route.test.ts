@@ -1,5 +1,11 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import type { EventRankingRow } from "@/lib/eventData";
 import { GET } from "./route";
+
+interface RankingsBody {
+  rankings: EventRankingRow[];
+  fetchedAt: number;
+}
 
 function params(eventKey: string) {
   return { params: Promise.resolve({ eventKey }) };
@@ -34,7 +40,7 @@ describe("GET /api/event/[eventKey]/rankings", () => {
 
     const res = await GET(new Request("http://test"), params("2026test"));
     expect(res.status).toBe(502);
-    const body = await res.json();
+    const body = (await res.json()) as { error: string };
     expect(body.error).toMatch(/Could not reach Statbotics/);
   });
 
@@ -57,7 +63,7 @@ describe("GET /api/event/[eventKey]/rankings", () => {
 
     const res = await GET(new Request("http://test"), params("2026test"));
     expect(res.status).toBe(200);
-    const body = await res.json();
+    const body = (await res.json()) as RankingsBody;
     expect(body.rankings).toHaveLength(1);
     expect(body.rankings[0].rank).toBe(1);
     expect(typeof body.fetchedAt).toBe("number");
@@ -68,7 +74,7 @@ describe("GET /api/event/[eventKey]/rankings", () => {
 
     const res = await GET(new Request("http://test"), params("2026test"));
     expect(res.status).toBe(200);
-    const body = await res.json();
+    const body = (await res.json()) as RankingsBody;
     expect(body.rankings).toEqual([]);
   });
 });

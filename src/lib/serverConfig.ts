@@ -7,20 +7,20 @@
 export interface ServerConfig {
   /** The Blue Alliance read key — https://www.thebluealliance.com/account */
   tbaApiKey: string | null;
-  /** Anthropic API key for Game Manual Q&A. */
-  anthropicApiKey: string | null;
   /**
-   * Model used for Manual Q&A answers. A small, fast model — this is simple
-   * retrieval + answer over one manual, not complex reasoning. Swap via env
-   * if a better cheap model ships.
+   * Base URL of the Cloudflare AI Search worker that backs Manual Q&A
+   * (RAG over the official game manual PDF). Not a secret — the worker is
+   * public — but kept server-side so the client only talks to our own API.
    */
-  manualQaModel: string;
+  manualQaRagUrl: string;
 }
+
+const DEFAULT_MANUAL_QA_RAG_URL =
+  "https://soft-hill-26e4.nakul-sethi-212.workers.dev";
 
 export function getServerConfig(): ServerConfig {
   return {
     tbaApiKey: process.env.TBA_API_KEY || null,
-    anthropicApiKey: process.env.ANTHROPIC_API_KEY || null,
-    manualQaModel: process.env.MANUAL_QA_MODEL || "claude-haiku-4-5-20251001",
+    manualQaRagUrl: process.env.MANUAL_QA_RAG_URL || DEFAULT_MANUAL_QA_RAG_URL,
   };
 }

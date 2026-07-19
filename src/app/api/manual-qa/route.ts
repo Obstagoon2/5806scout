@@ -1,13 +1,9 @@
-import Anthropic from "@anthropic-ai/sdk";
-import manualChunksJson from "@/data/manual-chunks.json";
-import { rankChunks, type ManualChunk } from "@/lib/manual";
 import { getServerConfig } from "@/lib/serverConfig";
 
-// The manual is ingested at setup time (npm run ingest-manual) into
-// src/data/manual-chunks.json and bundled here — retrieval and the Claude
-// call both happen server-side, so clients only ever send a question.
-
-const MANUAL_CHUNKS = manualChunksJson as ManualChunk[];
+// Manual Q&A is backed by a Cloudflare AI Search worker that indexes the
+// official game manual PDF (RAG: retrieval + generation both happen in the
+// worker). This route proxies it server-side so clients only ever talk to
+// our own API and the backing worker can be swapped via MANUAL_QA_RAG_URL.
 
 const MAX_QUESTION_CHARS = 1000;
 
@@ -15,33 +11,39 @@ interface QaRequestBody {
   question?: string;
 }
 
+interface RagStatus {
+  completed?: number;
+  engine?: { vectorize?: { vectorsCount?: number } };
+}
+
+interface RagAskResponse {
+  answer?: string;
+  sources?: Array<{ file: string; score: number; excerpt: string }>;
+  error?: string;
+}
+
 export async function GET(): Promise<Response> {
-  return Response.json({
-    ready: MANUAL_CHUNKS.length > 0,
-    chunkCount: MANUAL_CHUNKS.length,
-  });
+  const { manualQaRagUrl } = getServerConfig();
+  try {
+    const res = await fetch(`${manualQaRagUrl}/api/status`, {
+      cache: "no-store",
+    });
+    if (!res.ok) {
+      return Response.json({ ready: false, chunkCount: 0 });
+    }
+    const stats = (await res.json()) as RagStatus;
+    return Response.json({
+      ready: (stats.completed ?? 0) > 0,
+      chunkCount: stats.engine?.vectorize?.vectorsCount ?? 0,
+    });
+  } catch {
+    // Readiness probe only — the page shows its "manual not loaded" state.
+    return Response.json({ ready: false, chunkCount: 0 });
+  }
 }
 
 export async function POST(req: Request): Promise<Response> {
-  const { anthropicApiKey, manualQaModel } = getServerConfig();
-  if (!anthropicApiKey) {
-    return Response.json(
-      {
-        error:
-          "ANTHROPIC_API_KEY is not configured. Add it to .env.local to enable Manual Q&A.",
-      },
-      { status: 503 },
-    );
-  }
-  if (MANUAL_CHUNKS.length === 0) {
-    return Response.json(
-      {
-        error:
-          "No game manual has been ingested yet. Run `npm run ingest-manual -- <manual.txt>` and rebuild.",
-      },
-      { status: 503 },
-    );
-  }
+  const { manualQaRagUrl } = getServerConfig();
 
   let body: QaRequestBody;
   try {
@@ -55,59 +57,27 @@ export async function POST(req: Request): Promise<Response> {
     return Response.json({ error: "Question is required." }, { status: 400 });
   }
 
-  const chunks = rankChunks(question, MANUAL_CHUNKS);
-  if (chunks.length === 0) {
-    return Response.json({
-      answer:
-        "I couldn't find anything in the game manual related to that question. Try rephrasing with rule numbers or game-specific terms.",
-      citations: [],
-    });
-  }
-
-  const excerpts = chunks
-    .map((c) => `<excerpt id="${c.index + 1}">\n${c.text}\n</excerpt>`)
-    .join("\n\n");
-
-  const client = new Anthropic({ apiKey: anthropicApiKey });
-
   try {
-    const response = await client.messages.create({
-      model: manualQaModel,
-      max_tokens: 1024,
-      system:
-        "You answer FRC (FIRST Robotics Competition) game-manual questions for scouts during a competition. " +
-        "Answer ONLY from the provided manual excerpts. Cite every claim with the excerpt id in square brackets, e.g. [2]. " +
-        "If the excerpts don't contain the answer, say so plainly and do not guess. Keep answers short and rule-precise.",
-      messages: [
-        {
-          role: "user",
-          content: `Manual excerpts:\n\n${excerpts}\n\nQuestion: ${question}`,
-        },
-      ],
+    const res = await fetch(`${manualQaRagUrl}/api/ask`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ question }),
     });
-
-    if (response.stop_reason === "refusal") {
-      return Response.json({
-        answer: "I can't answer that question.",
-        citations: [],
-      });
+    const data = (await res.json()) as RagAskResponse;
+    if (!res.ok) {
+      return Response.json(
+        { error: data.error ?? `Manual assistant error (${res.status}).` },
+        { status: 502 },
+      );
     }
-
-    const answer = response.content
-      .filter((block) => block.type === "text")
-      .map((block) => block.text)
-      .join("\n")
-      .trim();
-
     return Response.json({
-      answer,
-      citations: chunks.map((c) => c.index + 1),
+      answer: data.answer ?? "",
+      sources: data.sources ?? [],
     });
-  } catch (err) {
-    const message =
-      err instanceof Anthropic.APIError
-        ? `Claude API error (${err.status}).`
-        : "Could not reach the Claude API.";
-    return Response.json({ error: message }, { status: 502 });
+  } catch {
+    return Response.json(
+      { error: "Could not reach the manual assistant." },
+      { status: 502 },
+    );
   }
 }
