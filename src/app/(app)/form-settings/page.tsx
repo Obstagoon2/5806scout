@@ -50,6 +50,42 @@ type Status =
   | { state: "saved" }
   | { state: "error"; message: string };
 
+/** Small trash-can glyph, matching the app's inline-SVG icon convention. */
+function TrashIcon() {
+  return (
+    <svg
+      aria-hidden
+      viewBox="0 0 24 24"
+      className="h-4 w-4"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="M3 6h18M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2m2 0v14a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V6m5 5v6m4-6v6" />
+    </svg>
+  );
+}
+
+/** Counter-clockwise arrow — restores a removed default question. */
+function RestoreIcon() {
+  return (
+    <svg
+      aria-hidden
+      viewBox="0 0 24 24"
+      className="h-4 w-4"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="M3 3v5h5M3.05 13a9 9 0 1 0 2.6-6.4L3 8" />
+    </svg>
+  );
+}
+
 export default function FormSettingsPage() {
   const { profile, user, dataTeamId } = useAuth();
   const { config } = useScoutForms();
@@ -242,15 +278,9 @@ export default function FormSettingsPage() {
                         key={field.id}
                         className="flex items-center justify-between gap-3 py-2"
                       >
-                        <label className="flex flex-1 cursor-pointer items-center gap-3">
-                          <input
-                            type="checkbox"
-                            checked={!isHidden}
-                            onChange={() => toggleFieldVisible(field.id)}
-                            className="h-4 w-4 accent-maroon-600"
-                          />
+                        <div className="flex min-w-0 flex-1 items-center gap-3">
                           <span
-                            className={`text-sm ${
+                            className={`truncate text-sm ${
                               isHidden
                                 ? "text-graphite-400 line-through"
                                 : "text-graphite-700"
@@ -258,10 +288,23 @@ export default function FormSettingsPage() {
                           >
                             {field.label}
                           </span>
-                        </label>
-                        <span className="badge bg-graphite-100 text-graphite-500">
-                          {KIND_LABELS[field.kind]}
-                        </span>
+                          <span className="badge bg-graphite-100 text-graphite-500">
+                            {KIND_LABELS[field.kind]}
+                          </span>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => toggleFieldVisible(field.id)}
+                          aria-label={`${isHidden ? "Restore" : "Remove"} ${field.label}`}
+                          title={isHidden ? "Restore question" : "Remove question"}
+                          className={`shrink-0 rounded-md p-1.5 transition ${
+                            isHidden
+                              ? "text-graphite-400 hover:bg-graphite-100 hover:text-graphite-700"
+                              : "text-graphite-500 hover:bg-maroon-50 hover:text-maroon-600 dark:hover:text-maroon-400"
+                          }`}
+                        >
+                          {isHidden ? <RestoreIcon /> : <TrashIcon />}
+                        </button>
                       </li>
                     );
                   })}
@@ -297,18 +340,7 @@ export default function FormSettingsPage() {
                       title="Remove question"
                       className="shrink-0 rounded-md p-1.5 text-graphite-500 transition hover:bg-maroon-50 hover:text-maroon-600 dark:hover:text-maroon-400"
                     >
-                      <svg
-                        aria-hidden
-                        viewBox="0 0 24 24"
-                        className="h-4 w-4"
-                        fill="none"
-                        stroke="currentColor"
-                        strokeWidth="2"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                      >
-                        <path d="M3 6h18M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2m2 0v14a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V6m5 5v6m4-6v6" />
-                      </svg>
+                      <TrashIcon />
                     </button>
                   </li>
                 ))}

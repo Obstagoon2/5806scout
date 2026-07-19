@@ -7,7 +7,7 @@
 //                         event data, images, fonts)
 //   - cross-origin:       untouched — Firestore/Auth manage their own
 //                         offline queue; intercepting them would break it
-const CACHE_NAME = "scout-shell-v1";
+const CACHE_NAME = "scout-shell-v2";
 const PRECACHE_URLS = ["/", "/home"];
 
 self.addEventListener("install", (event) => {
