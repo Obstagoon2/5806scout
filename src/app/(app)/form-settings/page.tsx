@@ -15,7 +15,7 @@ import { MATCH_SCOUT_SECTIONS } from "@/lib/matchScoutSchema";
 import { PIT_SCOUT_SECTIONS } from "@/lib/pitScoutSchema";
 import { useScoutForms } from "@/lib/useScoutForms";
 import { doc, serverTimestamp, setDoc } from "firebase/firestore";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 
 type FormKey = "pitScout" | "matchScout";
 
@@ -91,13 +91,19 @@ export default function FormSettingsPage() {
   const { config } = useScoutForms();
 
   const [formKey, setFormKey] = useState<FormKey>("pitScout");
-  // Local working copy of both customizations, seeded once the remote config
-  // loads; edits stay local until Save writes the whole doc back.
+  // Local working copy of both customizations — null until the first edit,
+  // when it forks from the live config. Edits stay local until Save writes
+  // the whole doc back.
   const [drafts, setDrafts] = useState<Record<
     FormKey,
     FormCustomization
   > | null>(null);
   const [status, setStatus] = useState<Status>({ state: "idle" });
+  const working =
+    drafts ??
+    (config
+      ? { pitScout: config.pitScout, matchScout: config.matchScout }
+      : null);
 
   // New-question builder state.
   const [newLabel, setNewLabel] = useState("");
@@ -105,12 +111,6 @@ export default function FormSettingsPage() {
   const [newSection, setNewSection] = useState<string>(CUSTOM_SECTION_TITLE);
   const [newOptions, setNewOptions] = useState("");
   const [newRequired, setNewRequired] = useState(false);
-
-  useEffect(() => {
-    if (config && !drafts) {
-      setDrafts({ pitScout: config.pitScout, matchScout: config.matchScout });
-    }
-  }, [config, drafts]);
 
   const isAdmin = profile?.role === "admin";
 
@@ -124,18 +124,22 @@ export default function FormSettingsPage() {
     );
   }
 
-  const draft = drafts?.[formKey];
+  const draft = working?.[formKey];
   const defaults = FORMS[formKey].sections;
   const hidden = new Set(draft?.hiddenFieldIds ?? []);
+  const removed = new Set(draft?.removedFieldIds ?? []);
+  const removedDefaults = defaults
+    .flatMap((section) => section.fields)
+    .filter((field) => removed.has(field.id));
   const sectionChoices = [
     ...defaults.map((s) => s.title),
     CUSTOM_SECTION_TITLE,
   ];
 
   function updateDraft(update: (prev: FormCustomization) => FormCustomization) {
-    setDrafts((prev) =>
-      prev ? { ...prev, [formKey]: update(prev[formKey]) } : prev,
-    );
+    if (working) {
+      setDrafts({ ...working, [formKey]: update(working[formKey]) });
+    }
     if (status.state !== "idle") setStatus({ state: "idle" });
   }
 
@@ -191,6 +195,22 @@ export default function FormSettingsPage() {
     setNewRequired(false);
   }
 
+  function removeDefaultQuestion(fieldId: string) {
+    updateDraft((prev) => ({
+      ...prev,
+      // Clear any strike so a later restore brings the question back active.
+      hiddenFieldIds: prev.hiddenFieldIds.filter((id) => id !== fieldId),
+      removedFieldIds: [...prev.removedFieldIds, fieldId],
+    }));
+  }
+
+  function restoreDefaultQuestion(fieldId: string) {
+    updateDraft((prev) => ({
+      ...prev,
+      removedFieldIds: prev.removedFieldIds.filter((id) => id !== fieldId),
+    }));
+  }
+
   function removeQuestion(fieldId: string) {
     updateDraft((prev) => ({
       ...prev,
@@ -199,14 +219,14 @@ export default function FormSettingsPage() {
   }
 
   async function handleSave() {
-    if (!drafts || !profile || !user || !dataTeamId) return;
+    if (!working || !profile || !user || !dataTeamId) return;
     setStatus({ state: "saving" });
     try {
       await setDoc(
         doc(db, "teams", dataTeamId, "config", SCOUT_FORMS_DOC_ID),
         {
-          pitScout: drafts.pitScout,
-          matchScout: drafts.matchScout,
+          pitScout: working.pitScout,
+          matchScout: working.matchScout,
           updatedAt: serverTimestamp(),
           updatedByUid: user.uid,
           updatedByName: profile.fullName,
@@ -232,8 +252,9 @@ export default function FormSettingsPage() {
           Form Setup
         </h1>
         <p className="mt-1 text-sm text-graphite-500">
-          Tune the scout forms for your team — hide questions you don&apos;t
-          need, add your own. Changes apply to everyone on the team.
+          Tune the scout forms for your team — uncheck a question to strike it
+          out, trash it to remove it, add your own. Changes apply to everyone
+          on the team.
         </p>
       </div>
 
@@ -264,53 +285,96 @@ export default function FormSettingsPage() {
         <>
           <section className="flex flex-col gap-3">
             <h2 className="section-title">Default questions</h2>
-            {defaults.map((section) => (
-              <div key={section.title} className="surface-card p-4">
-                <h3 className="mb-3 flex items-center gap-2 text-xs font-semibold uppercase tracking-widest text-maroon-700 dark:text-maroon-300">
-                  <span aria-hidden className="h-2.5 w-1 bg-maroon-600" />
-                  {section.title}
-                </h3>
-                <ul className="flex flex-col divide-y divide-graphite-100">
-                  {section.fields.map((field) => {
-                    const isHidden = hidden.has(field.id);
-                    return (
-                      <li
-                        key={field.id}
-                        className="flex items-center justify-between gap-3 py-2"
-                      >
-                        <div className="flex min-w-0 flex-1 items-center gap-3">
-                          <span
-                            className={`truncate text-sm ${
-                              isHidden
-                                ? "text-graphite-400 line-through"
-                                : "text-graphite-700"
-                            }`}
-                          >
-                            {field.label}
-                          </span>
-                          <span className="badge bg-graphite-100 text-graphite-500">
-                            {KIND_LABELS[field.kind]}
-                          </span>
-                        </div>
-                        <button
-                          type="button"
-                          onClick={() => toggleFieldVisible(field.id)}
-                          aria-label={`${isHidden ? "Restore" : "Remove"} ${field.label}`}
-                          title={isHidden ? "Restore question" : "Remove question"}
-                          className={`shrink-0 rounded-md p-1.5 transition ${
-                            isHidden
-                              ? "text-graphite-400 hover:bg-graphite-100 hover:text-graphite-700"
-                              : "text-graphite-500 hover:bg-maroon-50 hover:text-maroon-600 dark:hover:text-maroon-400"
-                          }`}
+            {defaults.map((section) => {
+              const visibleFields = section.fields.filter(
+                (field) => !removed.has(field.id),
+              );
+              if (visibleFields.length === 0) return null;
+              return (
+                <div key={section.title} className="surface-card p-4">
+                  <h3 className="mb-3 flex items-center gap-2 text-xs font-semibold uppercase tracking-widest text-maroon-700 dark:text-maroon-300">
+                    <span aria-hidden className="h-2.5 w-1 bg-maroon-600" />
+                    {section.title}
+                  </h3>
+                  <ul className="flex flex-col divide-y divide-graphite-100">
+                    {visibleFields.map((field) => {
+                      const isHidden = hidden.has(field.id);
+                      return (
+                        <li
+                          key={field.id}
+                          className="flex items-center justify-between gap-3 py-2"
                         >
-                          {isHidden ? <RestoreIcon /> : <TrashIcon />}
-                        </button>
-                      </li>
-                    );
-                  })}
+                          <label className="flex min-w-0 flex-1 cursor-pointer items-center gap-3">
+                            <input
+                              type="checkbox"
+                              checked={!isHidden}
+                              onChange={() => toggleFieldVisible(field.id)}
+                              aria-label={`${isHidden ? "Include" : "Strike"} ${field.label}`}
+                              className="h-4 w-4 shrink-0 accent-maroon-600"
+                            />
+                            <span
+                              className={`truncate text-sm ${
+                                isHidden
+                                  ? "text-graphite-400 line-through"
+                                  : "text-graphite-700"
+                              }`}
+                            >
+                              {field.label}
+                            </span>
+                            <span className="badge bg-graphite-100 text-graphite-500">
+                              {KIND_LABELS[field.kind]}
+                            </span>
+                          </label>
+                          <button
+                            type="button"
+                            onClick={() => removeDefaultQuestion(field.id)}
+                            aria-label={`Remove ${field.label}`}
+                            title="Remove question"
+                            className="shrink-0 rounded-md p-1.5 text-graphite-500 transition hover:bg-maroon-50 hover:text-maroon-600 dark:hover:text-maroon-400"
+                          >
+                            <TrashIcon />
+                          </button>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                </div>
+              );
+            })}
+
+            {removedDefaults.length > 0 && (
+              <details className="surface-card p-4">
+                <summary className="cursor-pointer text-sm text-graphite-500 transition hover:text-graphite-700">
+                  Removed questions ({removedDefaults.length})
+                </summary>
+                <ul className="mt-2 flex flex-col divide-y divide-graphite-100">
+                  {removedDefaults.map((field) => (
+                    <li
+                      key={field.id}
+                      className="flex items-center justify-between gap-3 py-2"
+                    >
+                      <div className="flex min-w-0 flex-1 items-center gap-3">
+                        <span className="truncate text-sm text-graphite-400">
+                          {field.label}
+                        </span>
+                        <span className="badge bg-graphite-100 text-graphite-500">
+                          {KIND_LABELS[field.kind]}
+                        </span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => restoreDefaultQuestion(field.id)}
+                        aria-label={`Restore ${field.label}`}
+                        title="Restore question"
+                        className="shrink-0 rounded-md p-1.5 text-graphite-400 transition hover:bg-graphite-100 hover:text-graphite-700"
+                      >
+                        <RestoreIcon />
+                      </button>
+                    </li>
+                  ))}
                 </ul>
-              </div>
-            ))}
+              </details>
+            )}
           </section>
 
           <section className="flex flex-col gap-3">

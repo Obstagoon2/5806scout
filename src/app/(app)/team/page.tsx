@@ -301,10 +301,9 @@ export default function TeamPage() {
             : ""}
         </h1>
         <p className="mt-1 text-sm text-graphite-500">
-          {roster.length} member{roster.length === 1 ? "" : "s"}.{" "}
-          {isAdmin
-            ? "Deactivated scouts keep their account but should hand off duties."
-            : "Admin access is granted by promoting a user in the Firebase console."}
+          {roster.length} member{roster.length === 1 ? "" : "s"}.
+          {isAdmin &&
+            " Deactivated scouts keep their account but should hand off duties."}
         </p>
       </div>
 

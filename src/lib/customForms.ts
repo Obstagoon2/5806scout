@@ -37,6 +37,8 @@ export interface CustomField {
 export interface FormCustomization {
   /** Ids of default-schema fields this team has toggled off. */
   hiddenFieldIds: string[];
+  /** Ids of default-schema fields this team has deleted from Form Setup. */
+  removedFieldIds: string[];
   /** Questions this team added on top of the default schema. */
   customFields: CustomField[];
 }
@@ -47,7 +49,7 @@ export interface ScoutFormsConfig {
 }
 
 export function emptyCustomization(): FormCustomization {
-  return { hiddenFieldIds: [], customFields: [] };
+  return { hiddenFieldIds: [], removedFieldIds: [], customFields: [] };
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -87,12 +89,15 @@ function sanitizeCustomization(value: unknown): FormCustomization {
   const hiddenFieldIds = Array.isArray(value.hiddenFieldIds)
     ? value.hiddenFieldIds.filter((id): id is string => typeof id === "string")
     : [];
+  const removedFieldIds = Array.isArray(value.removedFieldIds)
+    ? value.removedFieldIds.filter((id): id is string => typeof id === "string")
+    : [];
   const customFields = Array.isArray(value.customFields)
     ? value.customFields
         .map(sanitizeCustomField)
         .filter((field): field is CustomField => field !== null)
     : [];
-  return { hiddenFieldIds, customFields };
+  return { hiddenFieldIds, removedFieldIds, customFields };
 }
 
 /**
@@ -162,7 +167,12 @@ export function applyCustomization(
 ): FormSection[] {
   if (!customization) return [...defaults];
 
-  const hidden = new Set(customization.hiddenFieldIds);
+  // Hidden and removed both drop the question from the scout form; they only
+  // differ in how Form Setup presents them (struck out vs. gone).
+  const hidden = new Set([
+    ...customization.hiddenFieldIds,
+    ...customization.removedFieldIds,
+  ]);
   const sections: { title: string; description?: string; fields: FieldDef[] }[] =
     defaults.map((section) => ({
       title: section.title,

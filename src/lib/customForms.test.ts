@@ -44,6 +44,23 @@ describe("applyCustomization", () => {
   it("hides fields and drops sections left empty", () => {
     const result = applyCustomization(DEFAULTS, {
       hiddenFieldIds: ["endgame", "autoScoredLow"],
+      removedFieldIds: [],
+      customFields: [],
+    });
+    expect(result).toEqual([
+      {
+        title: "Autonomous",
+        fields: [
+          { kind: "select", id: "autoMobility", label: "Left zone", options: ["Yes", "No"] },
+        ],
+      },
+    ]);
+  });
+
+  it("drops removed fields from the form just like hidden ones", () => {
+    const result = applyCustomization(DEFAULTS, {
+      hiddenFieldIds: ["autoScoredLow"],
+      removedFieldIds: ["endgame"],
       customFields: [],
     });
     expect(result).toEqual([
@@ -59,6 +76,7 @@ describe("applyCustomization", () => {
   it("appends custom fields to an existing section by title", () => {
     const result = applyCustomization(DEFAULTS, {
       hiddenFieldIds: [],
+      removedFieldIds: [],
       customFields: [custom({ id: "custom_climb", section: "Endgame", kind: "counter" })],
     });
     const endgame = result.find((s) => s.title === "Endgame");
@@ -68,6 +86,7 @@ describe("applyCustomization", () => {
   it("collects unknown-section customs into a trailing section", () => {
     const result = applyCustomization(DEFAULTS, {
       hiddenFieldIds: [],
+      removedFieldIds: [],
       customFields: [custom({ id: "custom_a" }), custom({ id: "custom_b" })],
     });
     const last = result[result.length - 1];
@@ -78,6 +97,7 @@ describe("applyCustomization", () => {
   it("keeps a section alive via customs even when all defaults are hidden", () => {
     const result = applyCustomization(DEFAULTS, {
       hiddenFieldIds: ["endgame"],
+      removedFieldIds: [],
       customFields: [custom({ id: "custom_climb", section: "Endgame" })],
     });
     const endgame = result.find((s) => s.title === "Endgame");
@@ -87,6 +107,7 @@ describe("applyCustomization", () => {
   it("skips customs whose id collides with a default or earlier custom", () => {
     const result = applyCustomization(DEFAULTS, {
       hiddenFieldIds: [],
+      removedFieldIds: [],
       customFields: [
         custom({ id: "endgame", label: "Impostor" }),
         custom({ id: "custom_a", label: "First" }),
@@ -101,6 +122,7 @@ describe("applyCustomization", () => {
   it("produces fields that work with emptyValues and required validation", () => {
     const sections = applyCustomization(DEFAULTS, {
       hiddenFieldIds: [],
+      removedFieldIds: [],
       customFields: [
         custom({ id: "custom_req", required: true }),
         custom({ id: "custom_tally", kind: "counter" }),
@@ -136,9 +158,17 @@ describe("sanitizeScoutFormsConfig", () => {
       },
     });
     expect(config.matchScout.hiddenFieldIds).toEqual(["fouls"]);
+    expect(config.matchScout.removedFieldIds).toEqual([]);
     expect(config.matchScout.customFields).toEqual([
       { id: "custom_ok", kind: "text", label: "Fine", section: "Teleop" },
     ]);
+  });
+
+  it("keeps string removedFieldIds and drops malformed ones", () => {
+    const config = sanitizeScoutFormsConfig({
+      matchScout: { removedFieldIds: ["endgame", 7, null] },
+    });
+    expect(config.matchScout.removedFieldIds).toEqual(["endgame"]);
   });
 
   it("defaults a missing section to the custom section title", () => {
