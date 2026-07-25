@@ -18,7 +18,9 @@ export default function AppShellLayout({
             <AppHeader />
             <DesktopTabs />
             <AssignmentNotifications />
-            <div className="flex-1 pb-16 md:pb-0">{children}</div>
+            <div className="flex-1 pb-[calc(4rem_+_env(safe-area-inset-bottom))] md:pb-0">
+            {children}
+          </div>
             <MobileBottomNav />
           </div>
         </ReliabilityProvider>

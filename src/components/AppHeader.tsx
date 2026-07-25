@@ -15,7 +15,9 @@ export function AppHeader() {
   return (
     // border-maroon-900, not graphite: graphite inverts in dark mode, and the
     // line under the maroon header must stay near-black in both themes.
-    <header className="border-b border-maroon-900">
+    // Maroon bg + top safe-area padding so the notch/status-bar strip reads as
+    // part of the header when installed to the home screen on iPhone/iPad.
+    <header className="border-b border-maroon-900 bg-maroon-700 pl-[env(safe-area-inset-left)] pr-[env(safe-area-inset-right)] pt-[env(safe-area-inset-top)]">
       <div className="hazard-stripe h-1" />
       <div className="flex items-center justify-between bg-maroon-700 px-4 py-3 text-white md:px-6">
         <Link href="/home" className="flex items-center gap-2.5">

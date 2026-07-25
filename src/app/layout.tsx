@@ -1,6 +1,6 @@
 import { AuthProvider } from "@/lib/auth/AuthProvider";
 import { RegisterServiceWorker } from "@/components/RegisterServiceWorker";
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 
@@ -17,6 +17,31 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "FRC Scouting",
   description: "Real-time pit and match scouting for FRC teams.",
+  manifest: "/manifest.webmanifest",
+  applicationName: "Scouting",
+  // Installed-to-home-screen behavior on iPhone/iPad: run full-screen like a
+  // native app with a translucent status bar (paired with viewport-fit=cover
+  // and the safe-area padding in globals.css / the header + bottom nav).
+  appleWebApp: {
+    capable: true,
+    title: "Scouting",
+    statusBarStyle: "black-translucent",
+  },
+  icons: {
+    icon: "/lion-logo.png",
+    apple: "/lion-logo.png",
+  },
+  // Stop iOS Safari from auto-linking match/team numbers as phone numbers.
+  formatDetection: { telephone: false },
+};
+
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  // Draw under the notch/home indicator; components pad with the safe-area
+  // insets so nothing important lands beneath them.
+  viewportFit: "cover",
+  themeColor: "#5e141c",
 };
 
 export default function RootLayout({
