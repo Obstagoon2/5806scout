@@ -3,12 +3,14 @@
 import Link from "next/link";
 import Image from "next/image";
 import { useAuth } from "@/lib/auth/AuthProvider";
+import { useAppearance } from "@/components/AppearanceProvider";
 import { auth } from "@/lib/firebase/client";
 import { signOut } from "firebase/auth";
 import { ThemeToggle } from "@/components/ThemeToggle";
 
 export function AppHeader() {
   const { profile } = useAuth();
+  const { logoUrl } = useAppearance();
 
   return (
     // border-maroon-900, not graphite: graphite inverts in dark mode, and the
@@ -17,13 +19,24 @@ export function AppHeader() {
       <div className="hazard-stripe h-1" />
       <div className="flex items-center justify-between bg-maroon-700 px-4 py-3 text-white md:px-6">
         <Link href="/home" className="flex items-center gap-2.5">
-          <Image
-            src="/lion-logo.png"
-            alt="Team 5806 lion crest"
-            width={28}
-            height={28}
-            className="h-7 w-7 rounded-md bg-white object-contain"
-          />
+          {logoUrl ? (
+            // Custom team logo — a data URL or arbitrary host chosen at runtime,
+            // so a plain <img> (next/image would need domain whitelisting).
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={logoUrl}
+              alt="Team logo"
+              className="h-7 w-7 rounded-md bg-white object-contain"
+            />
+          ) : (
+            <Image
+              src="/lion-logo.png"
+              alt="Team 5806 lion crest"
+              width={28}
+              height={28}
+              className="h-7 w-7 rounded-md bg-white object-contain"
+            />
+          )}
           <span className="flex items-baseline gap-2">
             <span className="text-base font-semibold tracking-tight">
               FRC Scouting

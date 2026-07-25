@@ -6,7 +6,9 @@ import type {
   EventRankingRow,
   EventSearchResult,
 } from "@/lib/eventData";
+import { ReliabilityWarning } from "@/components/ReliabilityFlags";
 import { db } from "@/lib/firebase/client";
+import { fileToResizedDataUrl, isImageFile } from "@/lib/imageFile";
 import { doc, onSnapshot, setDoc } from "firebase/firestore";
 import { useEffect, useRef, useState } from "react";
 
@@ -358,7 +360,12 @@ function TeamsTable({ event }: { event: EventData }) {
         <tbody className="divide-y divide-graphite-100">
           {event.teams.map((t) => (
             <tr key={t.teamNumber} className="transition hover:bg-graphite-50">
-              <td className="stat px-3 py-2 font-semibold">{t.teamNumber}</td>
+              <td className="stat px-3 py-2 font-semibold">
+                <span className="inline-flex items-center gap-1.5">
+                  {t.teamNumber}
+                  <ReliabilityWarning teamNumber={t.teamNumber} />
+                </span>
+              </td>
               <td className="px-3 py-2">{t.nickname}</td>
               <td className="px-3 py-2 text-graphite-500">{t.city}</td>
               <td className="stat px-3 py-2">
@@ -378,6 +385,24 @@ interface PitMapDoc {
   updatedAt: number;
 }
 
+/** Upload glyph for the pit-map drop zone; matches the app's inline-SVG icons. */
+function UploadIcon() {
+  return (
+    <svg
+      aria-hidden
+      viewBox="0 0 24 24"
+      className="h-6 w-6 text-graphite-400"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12" />
+    </svg>
+  );
+}
+
 function MapView({
   event,
   teamId,
@@ -390,6 +415,9 @@ function MapView({
   const [pitMap, setPitMap] = useState<PitMapDoc | null>(null);
   const [pitMapUrl, setPitMapUrl] = useState("");
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [dragOver, setDragOver] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
   const venue = event.venue ?? null;
 
   useEffect(() => {
@@ -409,6 +437,27 @@ function MapView({
       setPitMapUrl("");
     } catch {
       setSaveError("Could not save the pit map — check your connection.");
+    }
+  }
+
+  // Compress a dropped/picked image to a data URL and store it inline (see
+  // imageFile.ts) — no Storage bucket needed, works with the existing <img>.
+  async function handleImageFile(file: File) {
+    setSaveError(null);
+    if (!isImageFile(file)) {
+      setSaveError("Drop an image file (PNG, JPG, etc.).");
+      return;
+    }
+    setUploading(true);
+    try {
+      const dataUrl = await fileToResizedDataUrl(file);
+      await savePitMap(dataUrl);
+    } catch (err) {
+      setSaveError(
+        err instanceof Error ? err.message : "Couldn't add that image.",
+      );
+    } finally {
+      setUploading(false);
     }
   }
 
@@ -460,34 +509,87 @@ function MapView({
             Pit layouts aren&apos;t published through any API — event organizers
             hand them out as an image or PDF.{" "}
             {isAdmin
-              ? "Paste the image URL here so the whole team sees it."
+              ? "Drag an image in from your desktop, or paste an image URL."
               : "Your admin can add it here for the whole team."}
           </p>
         </div>
 
         {isAdmin && (
-          <form
-            onSubmit={(e) => {
-              e.preventDefault();
-              if (pitMapUrl.trim()) void savePitMap(pitMapUrl.trim());
-            }}
-            className="flex flex-wrap items-center gap-2"
-          >
-            <input
-              type="url"
-              placeholder="https://… (pit map image URL)"
-              value={pitMapUrl}
-              onChange={(e) => setPitMapUrl(e.target.value)}
-              className={`${inputClass} w-72`}
-            />
-            <button
-              type="submit"
-              disabled={!pitMapUrl.trim()}
-              className="btn-primary px-4 py-2"
+          <>
+            <div
+              role="button"
+              tabIndex={0}
+              onClick={() => fileInputRef.current?.click()}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
+                  fileInputRef.current?.click();
+                }
+              }}
+              onDragOver={(e) => {
+                e.preventDefault();
+                setDragOver(true);
+              }}
+              onDragLeave={() => setDragOver(false)}
+              onDrop={(e) => {
+                e.preventDefault();
+                setDragOver(false);
+                const file = e.dataTransfer.files[0];
+                if (file) void handleImageFile(file);
+              }}
+              className={`flex cursor-pointer flex-col items-center justify-center gap-1 rounded-lg border-2 border-dashed px-4 py-8 text-center text-sm transition ${
+                dragOver
+                  ? "border-maroon-500 bg-maroon-50 text-maroon-700 dark:text-maroon-300"
+                  : "border-graphite-300 text-graphite-500 hover:border-graphite-400"
+              }`}
             >
-              {pitMap ? "Replace" : "Add"}
-            </button>
-          </form>
+              <UploadIcon />
+              <span className="font-medium">
+                {uploading
+                  ? "Adding image…"
+                  : dragOver
+                    ? "Drop to upload"
+                    : "Drag a pit map image here"}
+              </span>
+              <span className="text-xs text-graphite-400">
+                or click to choose a file
+              </span>
+            </div>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                if (file) void handleImageFile(file);
+                e.target.value = "";
+              }}
+            />
+
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                if (pitMapUrl.trim()) void savePitMap(pitMapUrl.trim());
+              }}
+              className="flex flex-wrap items-center gap-2"
+            >
+              <input
+                type="url"
+                placeholder="https://… (or paste an image URL)"
+                value={pitMapUrl}
+                onChange={(e) => setPitMapUrl(e.target.value)}
+                className={`${inputClass} w-72`}
+              />
+              <button
+                type="submit"
+                disabled={!pitMapUrl.trim()}
+                className="btn-secondary px-4 py-2"
+              >
+                {pitMap ? "Replace with URL" : "Add URL"}
+              </button>
+            </form>
+          </>
         )}
 
         {saveError && (
@@ -606,7 +708,10 @@ function RankingTable({ eventKey, myTeam }: { eventKey: string; myTeam: string }
                     {row.rank ?? "—"}
                   </td>
                   <td className="stat px-3 py-2 font-semibold">
-                    {row.teamNumber}
+                    <span className="inline-flex items-center gap-1.5">
+                      {row.teamNumber}
+                      <ReliabilityWarning teamNumber={row.teamNumber} />
+                    </span>
                   </td>
                   <td className="px-3 py-2">{row.teamName}</td>
                   <td className="stat px-3 py-2">

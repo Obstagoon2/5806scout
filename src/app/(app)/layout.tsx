@@ -1,6 +1,8 @@
+import { AppearanceProvider } from "@/components/AppearanceProvider";
 import { AppHeader } from "@/components/AppHeader";
 import { DesktopTabs, MobileBottomNav } from "@/components/AppNav";
 import { AssignmentNotifications } from "@/components/AssignmentNotifications";
+import { ReliabilityProvider } from "@/components/ReliabilityFlags";
 import { RequireAuth } from "@/lib/auth/RequireAuth";
 
 export default function AppShellLayout({
@@ -10,13 +12,17 @@ export default function AppShellLayout({
 }) {
   return (
     <RequireAuth>
-      <div className="flex min-h-full flex-1 flex-col">
-        <AppHeader />
-        <DesktopTabs />
-        <AssignmentNotifications />
-        <div className="flex-1 pb-16 md:pb-0">{children}</div>
-        <MobileBottomNav />
-      </div>
+      <AppearanceProvider>
+        <ReliabilityProvider>
+          <div className="flex min-h-full flex-1 flex-col">
+            <AppHeader />
+            <DesktopTabs />
+            <AssignmentNotifications />
+            <div className="flex-1 pb-16 md:pb-0">{children}</div>
+            <MobileBottomNav />
+          </div>
+        </ReliabilityProvider>
+      </AppearanceProvider>
     </RequireAuth>
   );
 }

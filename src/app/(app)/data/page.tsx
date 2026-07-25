@@ -7,6 +7,7 @@ import {
   counterFieldIds,
   type MatchSubmission,
 } from "@/lib/aggregate";
+import { ReliabilityWarning } from "@/components/ReliabilityFlags";
 import { useScoutForms } from "@/lib/useScoutForms";
 import { collection, onSnapshot, orderBy, query } from "firebase/firestore";
 import { useEffect, useMemo, useState } from "react";
@@ -148,7 +149,12 @@ export default function DataPage() {
                 {filtered.map((s) => (
                   <tr key={s.id} className="transition hover:bg-graphite-50">
                     <td className="stat px-3 py-2">Q{s.matchNumber}</td>
-                    <td className="stat px-3 py-2">{s.scoutedTeam}</td>
+                    <td className="stat px-3 py-2">
+                      <span className="inline-flex items-center gap-1.5">
+                        {s.scoutedTeam}
+                        <ReliabilityWarning teamNumber={s.scoutedTeam} />
+                      </span>
+                    </td>
                     <td className="px-3 py-2">
                       <span
                         className={`inline-block rounded px-1.5 py-0.5 text-xs font-semibold ${
@@ -202,7 +208,12 @@ export default function DataPage() {
             <tbody className="divide-y divide-graphite-100">
               {aggregates.map((agg) => (
                 <tr key={agg.team} className="transition hover:bg-graphite-50">
-                  <td className="stat px-3 py-2 font-semibold">{agg.team}</td>
+                  <td className="stat px-3 py-2 font-semibold">
+                    <span className="inline-flex items-center gap-1.5">
+                      {agg.team}
+                      <ReliabilityWarning teamNumber={agg.team} />
+                    </span>
+                  </td>
                   <td className="stat px-3 py-2">{agg.matches}</td>
                   {counterIds.map((id) => (
                     <td key={id} className="stat px-3 py-2">

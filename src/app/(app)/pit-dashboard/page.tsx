@@ -12,7 +12,21 @@ import {
   msUntilMatch,
   nextTeamMatch,
 } from "@/lib/pitDashboard";
-import { doc, onSnapshot, setDoc } from "firebase/firestore";
+import {
+  normalizeStatus,
+  STATUS_LABELS,
+  type TalkieStatus,
+} from "@/lib/talkie";
+import Link from "next/link";
+import {
+  collection,
+  doc,
+  onSnapshot,
+  orderBy,
+  query,
+  setDoc,
+  Timestamp,
+} from "firebase/firestore";
 import { useEffect, useState } from "react";
 
 const LIVE_REFRESH_MS = 60_000;
@@ -153,6 +167,9 @@ export default function PitDashboardPage() {
           />
           <QueueingCard ourNext={ourNext} msToQueue={msToQueue} alert={queueAlert} />
           <div className="md:col-span-2">
+            <OpenTalkieCard teamId={dataTeamId ?? ""} />
+          </div>
+          <div className="md:col-span-2">
             <TodoCard teamId={dataTeamId ?? ""} />
           </div>
         </div>
@@ -253,6 +270,114 @@ function QueueingCard({
               : `until ${matchLabel(ourNext)} — head to queue 5 min out.`}
           </p>
         </>
+      )}
+    </section>
+  );
+}
+
+interface OpenTalkie {
+  id: string;
+  title: string;
+  status: TalkieStatus;
+  assigneeName: string | null;
+  forTeamNumbers: string[];
+  createdByName: string;
+  createdAtMs: number;
+}
+
+// Only the two not-done statuses ever render here; keeps the badge palette in
+// step with the Talkie board.
+const OPEN_STATUS_STYLES: Record<"open" | "assigned", string> = {
+  open: "bg-amber-100 text-amber-900 dark:text-amber-200",
+  assigned: "bg-sky-50 text-sky-700 dark:text-sky-300",
+};
+
+/**
+ * Live roll-up of every unfinished Talkie request (status ≠ done) so the pit
+ * crew sees outstanding asks without leaving the dashboard. Read-only — actions
+ * live on the Talkie board, one tap away via the header link.
+ */
+function OpenTalkieCard({ teamId }: { teamId: string }) {
+  const [open, setOpen] = useState<OpenTalkie[]>([]);
+
+  useEffect(() => {
+    if (!teamId) return;
+    return onSnapshot(
+      query(
+        collection(db, "teams", teamId, "talkie"),
+        orderBy("createdAt", "desc"),
+      ),
+      (snapshot) =>
+        setOpen(
+          snapshot.docs
+            .map((d) => {
+              const data = d.data();
+              const createdAt = data.createdAt as Timestamp | null;
+              return {
+                id: d.id,
+                title: (data.title as string) ?? "",
+                status: normalizeStatus(data.status),
+                assigneeName: (data.assigneeName as string | null) ?? null,
+                forTeamNumbers: (data.forTeamNumbers as string[]) ?? [],
+                createdByName: (data.createdByName as string) ?? "",
+                createdAtMs: createdAt ? createdAt.toMillis() : Date.now(),
+              };
+            })
+            .filter((r) => r.status !== "done"),
+        ),
+    );
+  }, [teamId]);
+
+  return (
+    <section className="surface-card flex flex-col gap-3 p-5">
+      <div className="flex items-center justify-between gap-3">
+        <h2 className="section-title">
+          Open Talkie requests
+          {open.length > 0 && (
+            <span className="stat ml-2 text-graphite-500">({open.length})</span>
+          )}
+        </h2>
+        <Link
+          href="/talkie"
+          className="text-xs font-medium text-maroon-700 transition hover:text-maroon-800 dark:text-maroon-300"
+        >
+          Open board →
+        </Link>
+      </div>
+
+      {open.length === 0 ? (
+        <p className="rounded-lg border border-dashed border-graphite-300 px-4 py-6 text-center text-sm text-graphite-400">
+          Nothing outstanding — every Talkie request is done.
+        </p>
+      ) : (
+        <ul className="divide-y divide-graphite-100">
+          {open.map((request) => (
+            <li key={request.id} className="flex items-center gap-3 py-2.5">
+              <div className="flex min-w-0 flex-1 flex-col">
+                <span className="truncate text-sm font-medium text-graphite-800">
+                  {request.title}
+                </span>
+                <span className="text-xs text-graphite-500">
+                  {request.assigneeName
+                    ? `Assigned to ${request.assigneeName}`
+                    : `Unassigned · from ${request.createdByName}`}
+                </span>
+              </div>
+              {request.forTeamNumbers.length > 0 && (
+                <span className="stat shrink-0 rounded bg-graphite-100 px-2 py-1 text-xs font-semibold text-graphite-600">
+                  {request.forTeamNumbers.join(" & ")}
+                </span>
+              )}
+              <span
+                className={`shrink-0 rounded px-2 py-1 text-xs font-semibold ${
+                  OPEN_STATUS_STYLES[request.status as "open" | "assigned"]
+                }`}
+              >
+                {STATUS_LABELS[request.status]}
+              </span>
+            </li>
+          ))}
+        </ul>
       )}
     </section>
   );

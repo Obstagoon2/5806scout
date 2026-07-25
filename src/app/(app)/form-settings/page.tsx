@@ -1,5 +1,6 @@
 "use client";
 
+import { AppearanceEditor } from "@/components/AppearanceEditor";
 import { useAuth } from "@/lib/auth/AuthProvider";
 import {
   CUSTOM_SECTION_TITLE,
@@ -18,6 +19,13 @@ import { doc, serverTimestamp, setDoc } from "firebase/firestore";
 import { useState } from "react";
 
 type FormKey = "pitScout" | "matchScout";
+type Tab = FormKey | "website";
+
+const TAB_LABELS: Record<Tab, string> = {
+  pitScout: "Pit Scout",
+  matchScout: "Match Scout",
+  website: "Website Customization",
+};
 
 const FORMS: Record<
   FormKey,
@@ -90,7 +98,10 @@ export default function FormSettingsPage() {
   const { profile, user, dataTeamId } = useAuth();
   const { config } = useScoutForms();
 
-  const [formKey, setFormKey] = useState<FormKey>("pitScout");
+  const [tab, setTab] = useState<Tab>("pitScout");
+  // Form editing only ever operates on a real form; on the website tab this
+  // falls back to pitScout but the form body below isn't rendered.
+  const formKey: FormKey = tab === "website" ? "pitScout" : tab;
   // Local working copy of both customizations — null until the first edit,
   // when it forks from the live config. Edits stay local until Save writes
   // the whole doc back.
@@ -249,39 +260,41 @@ export default function FormSettingsPage() {
       <div>
         <h1 className="flex items-center gap-2.5 text-xl font-semibold text-graphite-900">
           <span aria-hidden className="h-5 w-1.5 bg-maroon-600" />
-          Form Setup
+          Settings
         </h1>
         <p className="mt-1 text-sm text-graphite-500">
-          Tune the scout forms for your team — uncheck a question to strike it
-          out, trash it to remove it, add your own. Changes apply to everyone
-          on the team.
+          {tab === "website"
+            ? "Brand the app for your team — accent color, background, font, and the top-left logo. Changes apply to everyone."
+            : "Tune the scout forms for your team — uncheck a question to strike it out, trash it to remove it, add your own. Changes apply to everyone on the team."}
         </p>
       </div>
 
-      <div className="surface-card flex self-start p-0.5">
-        {(Object.keys(FORMS) as FormKey[]).map((key) => (
+      <div className="surface-card flex flex-wrap self-start p-0.5">
+        {(Object.keys(TAB_LABELS) as Tab[]).map((key) => (
           <button
             key={key}
             type="button"
-            onClick={() => setFormKey(key)}
+            onClick={() => setTab(key)}
             className={`rounded px-3.5 py-1.5 text-sm font-medium transition ${
-              formKey === key
+              tab === key
                 ? "bg-maroon-600 text-white"
                 : "text-graphite-600 hover:text-graphite-900"
             }`}
           >
-            {FORMS[key].label}
+            {TAB_LABELS[key]}
           </button>
         ))}
       </div>
 
-      {!draft && (
+      {tab === "website" && <AppearanceEditor />}
+
+      {tab !== "website" && !draft && (
         <div className="surface-panel px-6 py-10 text-center text-sm text-graphite-500">
           Loading your team&apos;s form settings…
         </div>
       )}
 
-      {draft && (
+      {tab !== "website" && draft && (
         <>
           <section className="flex flex-col gap-3">
             <h2 className="section-title">Default questions</h2>

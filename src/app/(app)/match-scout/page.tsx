@@ -1,5 +1,6 @@
 "use client";
 
+import { ReliabilityWarning } from "@/components/ReliabilityFlags";
 import { SchemaForm } from "@/components/SchemaForm";
 import { useAuth } from "@/lib/auth/AuthProvider";
 import { db } from "@/lib/firebase/client";
@@ -8,15 +9,18 @@ import {
   missingRequiredFields,
   type FormValues,
 } from "@/lib/formSchema";
+import { RELIABILITY_FLAGS_DOC_ID } from "@/lib/reliability";
 import { useScoutForms } from "@/lib/useScoutForms";
 import {
   addDoc,
   collection,
+  doc,
   limit,
   onSnapshot,
   orderBy,
   query,
   serverTimestamp,
+  setDoc,
 } from "firebase/firestore";
 import { useEffect, useState } from "react";
 
@@ -47,6 +51,7 @@ export default function MatchScoutPage() {
     emptyValues(matchSections),
   );
   const [status, setStatus] = useState<Status>({ state: "idle" });
+  const [reliabilityIssue, setReliabilityIssue] = useState(false);
   const [recent, setRecent] = useState<RecentSubmission[]>([]);
 
   useEffect(() => {
@@ -108,16 +113,37 @@ export default function MatchScoutPage() {
         scoutedTeam: team,
         alliance,
         values,
+        reliabilityIssue,
         scoutName: profile.fullName,
         scoutUid: user.uid,
         createdAt: serverTimestamp(),
       });
 
+      // A checked reliability flag also lands in the shared flags doc so the
+      // warning triangle lights up everywhere this team is listed. Merge keeps
+      // other teams' flags intact.
+      if (reliabilityIssue) {
+        await setDoc(
+          doc(db, "teams", dataTeamId, "config", RELIABILITY_FLAGS_DOC_ID),
+          {
+            teams: {
+              [team]: {
+                flaggedByName: profile.fullName,
+                matchNumber: match,
+                updatedAtMs: Date.now(),
+              },
+            },
+          },
+          { merge: true },
+        );
+      }
+
       // Reset for the next match: bump match number, keep alliance (a scout
-      // usually watches the same station), clear team + tallies.
+      // usually watches the same station), clear team + tallies + the flag.
       setMatchNumber(String(match + 1));
       setScoutedTeam("");
       setValues(emptyValues(matchSections));
+      setReliabilityIssue(false);
       setStatus({ state: "saved" });
     } catch (err) {
       setStatus({
@@ -216,6 +242,43 @@ export default function MatchScoutPage() {
           }}
         />
 
+        <label
+          className={`flex cursor-pointer items-center gap-2.5 rounded-md border px-3 py-2.5 transition ${
+            reliabilityIssue
+              ? "border-red-500 bg-red-50 dark:bg-red-950/30"
+              : "border-graphite-200 hover:border-red-300"
+          }`}
+        >
+          <input
+            type="checkbox"
+            checked={reliabilityIssue}
+            onChange={(e) => {
+              setReliabilityIssue(e.target.checked);
+              if (status.state !== "idle" && status.state !== "saving") {
+                setStatus({ state: "idle" });
+              }
+            }}
+            className="h-4 w-4 shrink-0 accent-red-600"
+          />
+          <span className="flex items-center gap-1.5 text-sm font-semibold text-red-600 dark:text-red-400">
+            <svg
+              aria-hidden
+              viewBox="0 0 24 24"
+              className="h-4 w-4"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
+              <path d="M12 9v4" />
+              <path d="M12 17h.01" />
+            </svg>
+            Reliability Issue
+          </span>
+        </label>
+
         {status.state === "error" && (
           <p className="badge-error rounded-md px-3 py-2 text-sm normal-case tracking-normal">
             {status.message}
@@ -246,8 +309,9 @@ export default function MatchScoutPage() {
                 key={submission.id}
                 className="flex items-center justify-between px-4 py-2.5 text-sm"
               >
-                <span className="stat text-graphite-900">
+                <span className="stat flex items-center gap-1.5 text-graphite-900">
                   Q{submission.matchNumber} · Team {submission.scoutedTeam}
+                  <ReliabilityWarning teamNumber={submission.scoutedTeam} />
                 </span>
                 <span className="flex items-center gap-2 text-graphite-500">
                   <span

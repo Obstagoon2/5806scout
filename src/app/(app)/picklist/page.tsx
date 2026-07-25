@@ -1,5 +1,6 @@
 "use client";
 
+import { ReliabilityWarning } from "@/components/ReliabilityFlags";
 import { useAuth } from "@/lib/auth/AuthProvider";
 import {
   aggregateByTeam,
@@ -255,23 +256,26 @@ export default function PicklistPage() {
                       {index + 1}
                     </td>
                     <td className="px-3 py-2">
-                      <button
-                        type="button"
-                        disabled={!isAdmin}
-                        onClick={() =>
-                          void save(
-                            [...order],
-                            toggleStruck([...struck], teamNumber),
-                            [...doNotPick],
-                          )
-                        }
-                        className={`stat font-semibold ${
-                          isStruck ? "line-through" : ""
-                        } ${isAdmin ? "hover:text-maroon-600 dark:hover:text-maroon-400" : ""}`}
-                        title={isAdmin ? "Toggle picked/unavailable" : undefined}
-                      >
-                        {teamNumber}
-                      </button>
+                      <span className="inline-flex items-center gap-1.5">
+                        <button
+                          type="button"
+                          disabled={!isAdmin}
+                          onClick={() =>
+                            void save(
+                              [...order],
+                              toggleStruck([...struck], teamNumber),
+                              [...doNotPick],
+                            )
+                          }
+                          className={`stat font-semibold ${
+                            isStruck ? "line-through" : ""
+                          } ${isAdmin ? "hover:text-maroon-600 dark:hover:text-maroon-400" : ""}`}
+                          title={isAdmin ? "Toggle picked/unavailable" : undefined}
+                        >
+                          {teamNumber}
+                        </button>
+                        <ReliabilityWarning teamNumber={teamNumber} />
+                      </span>
                     </td>
                     <td className="px-3 py-2">
                       <button
@@ -388,7 +392,10 @@ export default function PicklistPage() {
                     return (
                       <tr key={teamNumber} className="bg-maroon-50/40 transition hover:bg-maroon-50">
                         <td className="stat px-3 py-2 font-semibold">
-                          {teamNumber}
+                          <span className="inline-flex items-center gap-1.5">
+                            {teamNumber}
+                            <ReliabilityWarning teamNumber={teamNumber} />
+                          </span>
                         </td>
                         <td className="px-3 py-2">{info?.nickname ?? "—"}</td>
                         <td className="stat px-3 py-2">
