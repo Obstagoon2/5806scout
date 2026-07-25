@@ -14,6 +14,11 @@ vi.stubGlobal("fetch", mockFetch);
 const CONFIG = {
   tbaApiKey: null,
   manualQaRagUrl: "https://rag.test",
+  cfAccountId: "acct-test",
+  cfAiSearchInstance: "game-manual-2026",
+  // No token -> the in-app AI Search path is skipped and these tests exercise
+  // the worker fallback (the same external contract they always covered).
+  cfAiSearchToken: null,
 };
 
 function req(body: unknown): Request {
@@ -112,7 +117,7 @@ describe("POST /api/manual-qa", () => {
     );
   });
 
-  it("passes the worker's error message through as 502", async () => {
+  it("returns a generic 502 when the worker responds with an error", async () => {
     mockGetServerConfig.mockReturnValue(CONFIG);
     mockFetch.mockResolvedValue(
       ragResponse({ error: "AI Search request failed: timeout" }, 502),
@@ -121,7 +126,9 @@ describe("POST /api/manual-qa", () => {
     const res = await POST(req({ question: "pinning penalty" }));
     expect(res.status).toBe(502);
     const body = (await res.json()) as { error: string };
-    expect(body.error).toMatch(/AI Search request failed/);
+    // The fallback treats any non-ok worker response as unreachable and
+    // surfaces one consistent message rather than the upstream's wording.
+    expect(body.error).toMatch(/Could not reach the manual assistant/);
   });
 
   it("returns a generic 502 when the worker is unreachable", async () => {

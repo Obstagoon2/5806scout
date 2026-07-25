@@ -1,11 +1,30 @@
 import { getServerConfig } from "@/lib/serverConfig";
 
-// Manual Q&A is backed by a Cloudflare AI Search worker that indexes the
-// official game manual PDF (RAG: retrieval + generation both happen in the
-// worker). This route proxies it server-side so clients only ever talk to
-// our own API and the backing worker can be swapped via MANUAL_QA_RAG_URL.
+// Manual Q&A is RAG (retrieval + generation) over the official game-manual PDF,
+// indexed by a Cloudflare AI Search instance. This route runs the RAG itself:
+// when a CF AI Search token is configured it calls the AI Search REST API
+// directly (in-app, no intermediary), and otherwise falls back to the public
+// worker proxy — so the feature keeps working before/without the token.
 
 const MAX_QUESTION_CHARS = 1000;
+
+const SYSTEM_PROMPT = [
+  "You are a rules assistant for the FIRST Robotics Competition 2026 season.",
+  "Answer questions using only the retrieved excerpts from the official 2026 Game Manual.",
+  "Cite rule numbers and section names when they appear in the excerpts.",
+  "If the retrieved excerpts do not contain the answer, say so plainly instead of guessing.",
+].join(" ");
+
+interface Source {
+  file: string;
+  score: number;
+  excerpt: string;
+}
+
+interface AskResult {
+  answer: string;
+  sources: Source[];
+}
 
 // The game manual is static, so a given question always yields the same
 // grounded answer. Cache answers in-process (Fluid Compute reuses instances)
@@ -16,7 +35,7 @@ const MAX_CACHE_ENTRIES = 300;
 
 interface CachedAnswer {
   answer: string;
-  sources: RagAskResponse["sources"];
+  sources: Source[];
   expires: number;
 }
 
@@ -60,12 +79,104 @@ interface RagStatus {
 
 interface RagAskResponse {
   answer?: string;
-  sources?: Array<{ file: string; score: number; excerpt: string }>;
+  sources?: Source[];
   error?: string;
 }
 
-export async function GET(): Promise<Response> {
+// AI Search chat/completions is OpenAI-compatible; Cloudflare may wrap it in a
+// { result, success } envelope, so parsing tolerates both shapes.
+interface CfPayload {
+  choices?: Array<{ message?: { content?: string } }>;
+  chunks?: unknown;
+}
+interface CfAiSearchResponse extends CfPayload {
+  result?: CfPayload;
+}
+
+/** Map AI Search chunk objects to display sources, defensively — the exact
+ *  chunk shape varies, so unknown fields degrade to sensible blanks. */
+function mapSources(chunks: unknown): Source[] {
+  if (!Array.isArray(chunks)) return [];
+  return chunks
+    .map((raw) => {
+      const c = raw as {
+        item?: { key?: string };
+        filename?: string;
+        score?: number;
+        text?: string;
+      };
+      const text = typeof c.text === "string" ? c.text : "";
+      return {
+        file: c.item?.key ?? c.filename ?? "",
+        score: typeof c.score === "number" ? Math.round(c.score * 100) / 100 : 0,
+        excerpt: text.length > 240 ? `${text.slice(0, 240)}…` : text,
+      };
+    })
+    .filter((s) => s.file || s.excerpt);
+}
+
+/**
+ * Run the RAG directly against the Cloudflare AI Search REST API. Returns null
+ * when unconfigured (no token) or on any failure, so the caller can fall back
+ * to the worker rather than surfacing a hard error.
+ */
+async function askViaAiSearch(question: string): Promise<AskResult | null> {
+  const { cfAccountId, cfAiSearchInstance, cfAiSearchToken } =
+    getServerConfig();
+  if (!cfAiSearchToken) return null;
+  try {
+    const res = await fetch(
+      `https://api.cloudflare.com/client/v4/accounts/${cfAccountId}/ai-search/instances/${cfAiSearchInstance}/chat/completions`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${cfAiSearchToken}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          messages: [
+            { role: "system", content: SYSTEM_PROMPT },
+            { role: "user", content: question },
+          ],
+          stream: false,
+        }),
+      },
+    );
+    if (!res.ok) return null;
+    const body = (await res.json()) as CfAiSearchResponse;
+    const payload = body.result ?? body;
+    const answer = payload.choices?.[0]?.message?.content ?? "";
+    if (!answer.trim()) return null;
+    return { answer, sources: mapSources(payload.chunks) };
+  } catch {
+    return null;
+  }
+}
+
+/** Fallback: the public Cloudflare worker proxy. Returns null on any failure. */
+async function askViaWorker(question: string): Promise<AskResult | null> {
   const { manualQaRagUrl } = getServerConfig();
+  try {
+    const res = await fetch(`${manualQaRagUrl}/api/ask`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ question }),
+    });
+    if (!res.ok) return null;
+    const data = (await res.json()) as RagAskResponse;
+    return { answer: data.answer ?? "", sources: data.sources ?? [] };
+  } catch {
+    return null;
+  }
+}
+
+export async function GET(): Promise<Response> {
+  const { manualQaRagUrl, cfAiSearchToken } = getServerConfig();
+  // With the in-app token configured, the index is assumed live (it's the same
+  // instance the worker reports on); skip the worker round-trip.
+  if (cfAiSearchToken) {
+    return Response.json({ ready: true, chunkCount: 0 });
+  }
   try {
     const res = await fetch(`${manualQaRagUrl}/api/status`, {
       cache: "no-store",
@@ -85,8 +196,6 @@ export async function GET(): Promise<Response> {
 }
 
 export async function POST(req: Request): Promise<Response> {
-  const { manualQaRagUrl } = getServerConfig();
-
   let body: QaRequestBody;
   try {
     body = (await req.json()) as QaRequestBody;
@@ -108,30 +217,22 @@ export async function POST(req: Request): Promise<Response> {
     );
   }
 
-  try {
-    const res = await fetch(`${manualQaRagUrl}/api/ask`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ question }),
-    });
-    const data = (await res.json()) as RagAskResponse;
-    if (!res.ok) {
-      return Response.json(
-        { error: data.error ?? `Manual assistant error (${res.status}).` },
-        { status: 502 },
-      );
-    }
-    const answer = data.answer ?? "";
-    const sources = data.sources ?? [];
-    // Only cache real, grounded answers — never a blank/failed generation.
-    if (answer.trim()) {
-      writeCache(key, { answer, sources, expires: Date.now() + ANSWER_TTL_MS });
-    }
-    return Response.json({ answer, sources });
-  } catch {
+  // Prefer the in-app AI Search path; fall back to the worker proxy.
+  const result = (await askViaAiSearch(question)) ?? (await askViaWorker(question));
+  if (!result) {
     return Response.json(
       { error: "Could not reach the manual assistant." },
       { status: 502 },
     );
   }
+
+  // Only cache real, grounded answers — never a blank/failed generation.
+  if (result.answer.trim()) {
+    writeCache(key, {
+      answer: result.answer,
+      sources: result.sources,
+      expires: Date.now() + ANSWER_TTL_MS,
+    });
+  }
+  return Response.json({ answer: result.answer, sources: result.sources });
 }
