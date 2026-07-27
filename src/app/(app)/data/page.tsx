@@ -152,7 +152,10 @@ export default function DataPage() {
                     <td className="stat px-3 py-2">
                       <span className="inline-flex items-center gap-1.5">
                         {s.scoutedTeam}
-                        <ReliabilityWarning teamNumber={s.scoutedTeam} />
+                        <ReliabilityWarning
+                          teamNumber={s.scoutedTeam}
+                          matchNumber={s.matchNumber}
+                        />
                       </span>
                     </td>
                     <td className="px-3 py-2">

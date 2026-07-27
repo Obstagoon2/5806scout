@@ -13,6 +13,7 @@ import { RELIABILITY_FLAGS_DOC_ID } from "@/lib/reliability";
 import { useScoutForms } from "@/lib/useScoutForms";
 import {
   addDoc,
+  arrayUnion,
   collection,
   doc,
   limit,
@@ -119,24 +120,30 @@ export default function MatchScoutPage() {
         createdAt: serverTimestamp(),
       });
 
-      // A checked reliability flag also lands in the shared flags doc so the
-      // warning triangle lights up everywhere this team is listed. Merge keeps
-      // other teams' flags intact.
-      if (reliabilityIssue) {
-        await setDoc(
-          doc(db, "teams", dataTeamId, "config", RELIABILITY_FLAGS_DOC_ID),
-          {
-            teams: {
-              [team]: {
-                flaggedByName: profile.fullName,
-                matchNumber: match,
-                updatedAtMs: Date.now(),
-              },
+      // Every submission bumps the team's scouted-match counter — that's the
+      // denominator that decides whether a flag stays scoped to this match or
+      // escalates to a team-wide warning. A checked flag also records the match
+      // it came from. arrayUnion keeps concurrent scouts from clobbering each
+      // other and collapses duplicate submissions for the same match; merge
+      // keeps other teams' counters intact.
+      await setDoc(
+        doc(db, "teams", dataTeamId, "config", RELIABILITY_FLAGS_DOC_ID),
+        {
+          teams: {
+            [team]: {
+              scoutedMatches: arrayUnion(match),
+              ...(reliabilityIssue
+                ? {
+                    flaggedMatches: arrayUnion(match),
+                    flaggedByName: profile.fullName,
+                    updatedAtMs: Date.now(),
+                  }
+                : {}),
             },
           },
-          { merge: true },
-        );
-      }
+        },
+        { merge: true },
+      );
 
       // Reset for the next match: bump match number, keep alliance (a scout
       // usually watches the same station), clear team + tallies + the flag.
@@ -311,7 +318,10 @@ export default function MatchScoutPage() {
               >
                 <span className="stat flex items-center gap-1.5 text-graphite-900">
                   Q{submission.matchNumber} · Team {submission.scoutedTeam}
-                  <ReliabilityWarning teamNumber={submission.scoutedTeam} />
+                  <ReliabilityWarning
+                    teamNumber={submission.scoutedTeam}
+                    matchNumber={submission.matchNumber}
+                  />
                 </span>
                 <span className="flex items-center gap-2 text-graphite-500">
                   <span
