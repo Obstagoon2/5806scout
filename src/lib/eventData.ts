@@ -139,6 +139,26 @@ export function mapTeams(
     .sort((a, b) => a.teamNumber - b.teamNumber);
 }
 
+/**
+ * Carry EPA and EPA rank forward from the previous sync for teams whose fresh
+ * EPA is missing. Used when Statbotics was unreachable during a sync: the team
+ * list and schedule from TBA are still fresh and worth saving, but every EPA
+ * came back null, and blindly persisting those nulls would wipe the numbers the
+ * whole team shares. A fresh non-null EPA always wins.
+ */
+export function preserveEpa(
+  fresh: readonly EventTeam[],
+  previous: readonly EventTeam[],
+): EventTeam[] {
+  const prior = new Map(previous.map((t) => [t.teamNumber, t]));
+  return fresh.map((team) => {
+    if (team.epa !== null) return team;
+    const before = prior.get(team.teamNumber);
+    if (!before || before.epa === null) return team;
+    return { ...team, epa: before.epa, epaRank: before.epaRank };
+  });
+}
+
 export interface EventRankingRow {
   rank: number | null;
   teamNumber: number;

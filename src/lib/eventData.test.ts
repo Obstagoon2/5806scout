@@ -5,8 +5,10 @@ import {
   mapRankings,
   mapTeams,
   mapVenue,
+  preserveEpa,
   searchEvents,
   teamKeyToNumber,
+  type EventTeam,
   type StatboticsTeamEvent,
   type TbaEventSimple,
   type TbaMatchSimple,
@@ -260,5 +262,47 @@ describe("searchEvents", () => {
 
   it("caps results at the limit", () => {
     expect(searchEvents(events, "2026", 2)).toHaveLength(2);
+  });
+});
+
+describe("preserveEpa", () => {
+  const previous: EventTeam[] = [
+    { teamNumber: 5806, nickname: "Basement Lions", city: "Livingston", epa: 41.7, epaRank: 2 },
+    { teamNumber: 254, nickname: "The Cheesy Poofs", city: "San Jose", epa: 92.4, epaRank: 1 },
+  ];
+
+  function fresh(epa: number | null, teamNumber = 5806): EventTeam[] {
+    return [
+      { teamNumber, nickname: "Basement Lions", city: "Livingston", epa, epaRank: epa === null ? null : 3 },
+    ];
+  }
+
+  it("carries prior EPA and rank forward when the fresh EPA is null", () => {
+    const merged = preserveEpa(fresh(null), previous);
+    expect(merged[0]).toMatchObject({ epa: 41.7, epaRank: 2 });
+  });
+
+  it("keeps a fresh non-null EPA over the prior value", () => {
+    const merged = preserveEpa(fresh(50.1), previous);
+    expect(merged[0]).toMatchObject({ epa: 50.1, epaRank: 3 });
+  });
+
+  it("leaves EPA null for a team absent from the previous sync", () => {
+    const merged = preserveEpa(fresh(null, 1234), previous);
+    expect(merged[0].epa).toBeNull();
+    expect(merged[0].epaRank).toBeNull();
+  });
+
+  it("leaves EPA null when the previous sync also had none", () => {
+    const merged = preserveEpa(fresh(null), [
+      { teamNumber: 5806, nickname: "Basement Lions", city: "Livingston", epa: null, epaRank: null },
+    ]);
+    expect(merged[0].epa).toBeNull();
+  });
+
+  it("preserves the fresh team roster, not the previous one", () => {
+    const merged = preserveEpa(fresh(null, 1234), previous);
+    expect(merged).toHaveLength(1);
+    expect(merged[0].teamNumber).toBe(1234);
   });
 });

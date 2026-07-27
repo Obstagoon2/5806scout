@@ -6,9 +6,21 @@ vi.mock("@/lib/serverConfig", () => ({
   getServerConfig: vi.fn(),
 }));
 
-import { getServerConfig } from "@/lib/serverConfig";
+import { getServerConfig, type ServerConfig } from "@/lib/serverConfig";
 
 const mockGetServerConfig = vi.mocked(getServerConfig);
+
+/** A complete ServerConfig stub. The Cloudflare AI Search fields are unused
+ *  by these routes but required by the type, so they get inert placeholders. */
+function serverConfig(tbaApiKey: string | null): ServerConfig {
+  return {
+    tbaApiKey,
+    manualQaRagUrl: "https://rag.test",
+    cfAccountId: "test-account",
+    cfAiSearchInstance: "test-instance",
+    cfAiSearchToken: null,
+  };
+}
 
 function params(eventKey: string) {
   return { params: Promise.resolve({ eventKey }) };
@@ -27,10 +39,7 @@ describe("GET /api/event/[eventKey]", () => {
   });
 
   it("returns 503 when TBA_API_KEY is not configured", async () => {
-    mockGetServerConfig.mockReturnValue({
-      tbaApiKey: null,
-      manualQaRagUrl: "https://rag.test",
-    });
+    mockGetServerConfig.mockReturnValue(serverConfig(null));
 
     const res = await GET(new Request("http://test"), params("2026test"));
     expect(res.status).toBe(503);
@@ -39,20 +48,14 @@ describe("GET /api/event/[eventKey]", () => {
   });
 
   it("returns 400 for an invalid event code", async () => {
-    mockGetServerConfig.mockReturnValue({
-      tbaApiKey: "key",
-      manualQaRagUrl: "https://rag.test",
-    });
+    mockGetServerConfig.mockReturnValue(serverConfig("key"));
 
     const res = await GET(new Request("http://test"), params("bad key!"));
     expect(res.status).toBe(400);
   });
 
   it("returns 404 when TBA reports the event doesn't exist", async () => {
-    mockGetServerConfig.mockReturnValue({
-      tbaApiKey: "key",
-      manualQaRagUrl: "https://rag.test",
-    });
+    mockGetServerConfig.mockReturnValue(serverConfig("key"));
     vi.stubGlobal(
       "fetch",
       vi.fn().mockResolvedValue(jsonResponse({}, 404)),
@@ -63,10 +66,7 @@ describe("GET /api/event/[eventKey]", () => {
   });
 
   it("returns 502 when TBA rejects the API key", async () => {
-    mockGetServerConfig.mockReturnValue({
-      tbaApiKey: "bad-key",
-      manualQaRagUrl: "https://rag.test",
-    });
+    mockGetServerConfig.mockReturnValue(serverConfig("bad-key"));
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse({}, 401)));
 
     const res = await GET(new Request("http://test"), params("2026test"));
@@ -76,10 +76,7 @@ describe("GET /api/event/[eventKey]", () => {
   });
 
   it("returns 502 on a generic TBA failure", async () => {
-    mockGetServerConfig.mockReturnValue({
-      tbaApiKey: "key",
-      manualQaRagUrl: "https://rag.test",
-    });
+    mockGetServerConfig.mockReturnValue(serverConfig("key"));
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse({}, 500)));
 
     const res = await GET(new Request("http://test"), params("2026test"));
@@ -87,10 +84,7 @@ describe("GET /api/event/[eventKey]", () => {
   });
 
   it("returns 502 when fetch throws (network failure)", async () => {
-    mockGetServerConfig.mockReturnValue({
-      tbaApiKey: "key",
-      manualQaRagUrl: "https://rag.test",
-    });
+    mockGetServerConfig.mockReturnValue(serverConfig("key"));
     vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new Error("network down")));
 
     const res = await GET(new Request("http://test"), params("2026test"));
@@ -100,10 +94,7 @@ describe("GET /api/event/[eventKey]", () => {
   });
 
   it("degrades gracefully to no EPA when Statbotics fails, but still syncs teams", async () => {
-    mockGetServerConfig.mockReturnValue({
-      tbaApiKey: "key",
-      manualQaRagUrl: "https://rag.test",
-    });
+    mockGetServerConfig.mockReturnValue(serverConfig("key"));
 
     const fetchMock = vi.fn(async (url: string) => {
       if (url.includes("thebluealliance")) {
@@ -134,16 +125,15 @@ describe("GET /api/event/[eventKey]", () => {
 
     const res = await GET(new Request("http://test"), params("2026test"));
     expect(res.status).toBe(200);
-    const body = (await res.json()) as EventData;
+    const body = (await res.json()) as EventData & { epaAvailable: boolean };
     expect(body.teams[0].epa).toBeNull();
     expect(body.eventName).toBe("Test Event");
+    // The client keys off this to avoid persisting null EPA over good data.
+    expect(body.epaAvailable).toBe(false);
   });
 
   it("syncs teams, matches, and venue on success", async () => {
-    mockGetServerConfig.mockReturnValue({
-      tbaApiKey: "key",
-      manualQaRagUrl: "https://rag.test",
-    });
+    mockGetServerConfig.mockReturnValue(serverConfig("key"));
 
     const fetchMock = vi.fn(async (url: string) => {
       if (url.includes("/teams/simple")) {
@@ -171,9 +161,45 @@ describe("GET /api/event/[eventKey]", () => {
 
     const res = await GET(new Request("http://test"), params("2026test"));
     expect(res.status).toBe(200);
-    const body = (await res.json()) as EventData;
+    const body = (await res.json()) as EventData & { epaAvailable: boolean };
     expect(body.eventKey).toBe("2026test");
     expect(body.teams[0].epa).toBeCloseTo(41.7);
     expect(body.venue?.name).toBe("Some HS");
+    expect(body.epaAvailable).toBe(true);
+  });
+
+  // Regression: a Statbotics outage answers every endpoint with `500 {}` while
+  // the host still serves 200s. Before this, the sync reported success with a
+  // full column of null EPA, which the client persisted over good data.
+  it("flags EPA unavailable when Statbotics 500s on every attempt", async () => {
+    mockGetServerConfig.mockReturnValue(serverConfig("key"));
+
+    const fetchMock = vi.fn(async (url: string) => {
+      if (url.includes("statbotics")) return jsonResponse({}, 500);
+      if (url.includes("/teams/simple")) {
+        return jsonResponse([
+          { team_number: 5806, nickname: "Basement Lions", city: "Livingston" },
+        ]);
+      }
+      if (url.includes("/matches/simple")) return jsonResponse([]);
+      return jsonResponse({
+        name: "Test Event",
+        location_name: null,
+        address: null,
+        city: null,
+        gmaps_url: null,
+        lat: null,
+        lng: null,
+      });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const res = await GET(new Request("http://test"), params("2026test"));
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as EventData & { epaAvailable: boolean };
+    expect(body.epaAvailable).toBe(false);
+    expect(body.teams[0].epa).toBeNull();
+    // Teams and schedule still sync — only EPA is degraded.
+    expect(body.teams).toHaveLength(1);
   });
 });

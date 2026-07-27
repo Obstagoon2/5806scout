@@ -2,15 +2,14 @@ import {
   mapMatches,
   mapTeams,
   mapVenue,
-  type StatboticsTeamEvent,
   type TbaEvent,
   type TbaMatchSimple,
   type TbaTeamSimple,
 } from "@/lib/eventData";
+import { fetchTeamEvents } from "@/lib/statbotics";
 import { getServerConfig } from "@/lib/serverConfig";
 
 const TBA_BASE = "https://www.thebluealliance.com/api/v3";
-const STATBOTICS_BASE = "https://api.statbotics.io/v3";
 
 class HttpError extends Error {
   constructor(
@@ -68,24 +67,19 @@ export async function GET(
     ]);
 
     // Statbotics is keyless; EPA is nice-to-have, so failures degrade to
-    // "no EPA" rather than failing the whole sync.
-    let statbotics: StatboticsTeamEvent[] = [];
-    try {
-      const res = await fetch(
-        `${STATBOTICS_BASE}/team_events?event=${eventKey}&limit=200`,
-        { cache: "no-store" },
-      );
-      if (res.ok) statbotics = (await res.json()) as StatboticsTeamEvent[];
-    } catch {
-      // EPA unavailable — teams still sync.
-    }
+    // "no EPA" rather than failing the whole sync. But we flag which happened:
+    // every team's EPA coming back null because Statbotics is down looks
+    // identical to a real "no EPA yet", and the client persists this response,
+    // so without the flag an outage silently overwrites good EPA with nulls.
+    const statbotics = await fetchTeamEvents(eventKey);
 
     return Response.json({
       eventKey,
       eventName: event.name,
-      teams: mapTeams(tbaTeams, statbotics),
+      teams: mapTeams(tbaTeams, statbotics.ok ? statbotics.data : []),
       matches: mapMatches(tbaMatches),
       venue: mapVenue(event),
+      epaAvailable: statbotics.ok,
     });
   } catch (err) {
     if (err instanceof HttpError) {

@@ -1,10 +1,11 @@
 "use client";
 
 import { useAuth } from "@/lib/auth/AuthProvider";
-import type {
-  EventData,
-  EventRankingRow,
-  EventSearchResult,
+import {
+  preserveEpa,
+  type EventData,
+  type EventRankingRow,
+  type EventSearchResult,
 } from "@/lib/eventData";
 import { ReliabilityWarning } from "@/components/ReliabilityFlags";
 import { db } from "@/lib/firebase/client";
@@ -55,7 +56,10 @@ export default function EventPage() {
     setStatus({ state: "syncing" });
     try {
       const res = await fetch(`/api/event/${encodeURIComponent(key)}`);
-      const body = (await res.json()) as EventData & { error?: string };
+      const body = (await res.json()) as EventData & {
+        epaAvailable?: boolean;
+        error?: string;
+      };
       if (!res.ok) {
         setStatus({
           state: "error",
@@ -63,11 +67,29 @@ export default function EventPage() {
         });
         return;
       }
+
+      // Statbotics down: keep the EPA we already had rather than saving a full
+      // column of nulls over it. Only meaningful when re-syncing the same event.
+      const { epaAvailable, error: _error, ...data } = body;
+      const teams =
+        epaAvailable === false && event?.eventKey === data.eventKey
+          ? preserveEpa(data.teams, event.teams)
+          : data.teams;
+
       await setDoc(doc(db, "teams", dataTeamId, "config", "event"), {
-        ...body,
+        ...data,
+        teams,
         syncedAt: Date.now(),
       });
-      setStatus({ state: "idle" });
+      setStatus(
+        epaAvailable === false
+          ? {
+              state: "error",
+              message:
+                "Synced teams and schedule, but Statbotics is unavailable — EPA may be stale.",
+            }
+          : { state: "idle" },
+      );
     } catch {
       setStatus({ state: "error", message: "Sync failed — are you online?" });
     }
