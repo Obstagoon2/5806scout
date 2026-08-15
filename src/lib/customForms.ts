@@ -18,6 +18,8 @@ export const CUSTOM_FIELD_KINDS = [
   "textarea",
   "multiselect",
   "counter",
+  "drawing",
+  "photo",
 ] as const;
 
 export type CustomFieldKind = (typeof CUSTOM_FIELD_KINDS)[number];
@@ -41,6 +43,12 @@ export interface FormCustomization {
   removedFieldIds: string[];
   /** Questions this team added on top of the default schema. */
   customFields: CustomField[];
+  /**
+   * Section headings this team added, in the order they should render after
+   * the default sections. A section only reaches the scout form once it has
+   * at least one question.
+   */
+  customSections: string[];
 }
 
 export interface ScoutFormsConfig {
@@ -49,7 +57,12 @@ export interface ScoutFormsConfig {
 }
 
 export function emptyCustomization(): FormCustomization {
-  return { hiddenFieldIds: [], removedFieldIds: [], customFields: [] };
+  return {
+    hiddenFieldIds: [],
+    removedFieldIds: [],
+    customFields: [],
+    customSections: [],
+  };
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -97,7 +110,20 @@ function sanitizeCustomization(value: unknown): FormCustomization {
         .map(sanitizeCustomField)
         .filter((field): field is CustomField => field !== null)
     : [];
-  return { hiddenFieldIds, removedFieldIds, customFields };
+  // Titles are the join key between a section and its questions, so trim them
+  // and drop blanks/duplicates rather than letting two "Strategy " variants
+  // split one section in half.
+  const customSections = Array.isArray(value.customSections)
+    ? [
+        ...new Set(
+          value.customSections
+            .filter((title): title is string => typeof title === "string")
+            .map((title) => title.trim())
+            .filter((title) => title !== ""),
+        ),
+      ]
+    : [];
+  return { hiddenFieldIds, removedFieldIds, customFields, customSections };
 }
 
 /**
@@ -132,6 +158,20 @@ function customFieldToFieldDef(field: CustomField): FieldDef {
       };
     case "counter":
       return { kind: "counter", id: field.id, label: field.label };
+    case "drawing":
+      return {
+        kind: "drawing",
+        id: field.id,
+        label: field.label,
+        required: field.required,
+      };
+    case "photo":
+      return {
+        kind: "photo",
+        id: field.id,
+        label: field.label,
+        required: field.required,
+      };
     case "number":
       return {
         kind: "number",
@@ -179,6 +219,15 @@ export function applyCustomization(
       ...(section.description ? { description: section.description } : {}),
       fields: section.fields.filter((field) => !hidden.has(field.id)),
     }));
+
+  // Team-added sections render after the defaults, in the order the admin
+  // arranged them. Seeding them empty here (rather than letting the first
+  // question create them) is what makes that order deterministic.
+  for (const title of customization.customSections) {
+    if (!sections.some((section) => section.title === title)) {
+      sections.push({ title, fields: [] });
+    }
+  }
 
   const defaultIds = new Set(
     defaults.flatMap((section) => section.fields.map((field) => field.id)),

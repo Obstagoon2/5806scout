@@ -42,6 +42,8 @@ const KIND_LABELS: Record<CustomFieldKind, string> = {
   multiselect: "Multi-select",
   counter: "Tally counter",
   number: "Number",
+  drawing: "Drawing / map",
+  photo: "Photo",
 };
 
 /** Kinds whose FieldDef supports the required flag. */
@@ -50,6 +52,8 @@ const REQUIRABLE_KINDS: readonly CustomFieldKind[] = [
   "textarea",
   "select",
   "number",
+  "drawing",
+  "photo",
 ];
 
 type Status =
@@ -122,6 +126,7 @@ export default function FormSettingsPage() {
   const [newSection, setNewSection] = useState<string>(CUSTOM_SECTION_TITLE);
   const [newOptions, setNewOptions] = useState("");
   const [newRequired, setNewRequired] = useState(false);
+  const [newSectionTitle, setNewSectionTitle] = useState("");
 
   const isAdmin = profile?.role === "admin";
 
@@ -142,10 +147,19 @@ export default function FormSettingsPage() {
   const removedDefaults = defaults
     .flatMap((section) => section.fields)
     .filter((field) => removed.has(field.id));
+  const customSections = draft?.customSections ?? [];
   const sectionChoices = [
-    ...defaults.map((s) => s.title),
-    CUSTOM_SECTION_TITLE,
+    ...new Set([
+      ...defaults.map((s) => s.title),
+      ...customSections,
+      CUSTOM_SECTION_TITLE,
+    ]),
   ];
+  // Switching between the Pit and Match tabs can strand the picker on a
+  // section the other form doesn't have — fall back to the catch-all.
+  const selectedSection = sectionChoices.includes(newSection)
+    ? newSection
+    : CUSTOM_SECTION_TITLE;
 
   function updateDraft(update: (prev: FormCustomization) => FormCustomization) {
     if (working) {
@@ -191,7 +205,7 @@ export default function FormSettingsPage() {
       id: makeCustomFieldId(label, taken),
       kind: newKind,
       label,
-      section: newSection,
+      section: selectedSection,
       ...(needsOptions ? { options } : {}),
       ...(newRequired && REQUIRABLE_KINDS.includes(newKind)
         ? { required: true }
@@ -204,6 +218,43 @@ export default function FormSettingsPage() {
     setNewLabel("");
     setNewOptions("");
     setNewRequired(false);
+  }
+
+  function addSection() {
+    const title = newSectionTitle.trim();
+    if (!title) {
+      setStatus({ state: "error", message: "The section needs a name." });
+      return;
+    }
+    if (sectionChoices.some((choice) => choice === title)) {
+      setStatus({
+        state: "error",
+        message: `“${title}” is already a section on this form.`,
+      });
+      return;
+    }
+    updateDraft((prev) => ({
+      ...prev,
+      customSections: [...prev.customSections, title],
+    }));
+    setNewSectionTitle("");
+    // Point the question builder at the section the admin just made — adding
+    // one is almost always the first half of "and now put questions in it".
+    setNewSection(title);
+  }
+
+  function removeSection(title: string) {
+    updateDraft((prev) => ({
+      ...prev,
+      customSections: prev.customSections.filter((s) => s !== title),
+      // Questions outlive their section rather than vanishing with it — they
+      // fall back to the catch-all, where the admin can re-file or delete them.
+      customFields: prev.customFields.map((field) =>
+        field.section === title
+          ? { ...field, section: CUSTOM_SECTION_TITLE }
+          : field,
+      ),
+    }));
   }
 
   function removeDefaultQuestion(fieldId: string) {
@@ -265,7 +316,7 @@ export default function FormSettingsPage() {
         <p className="mt-1 text-sm text-graphite-500">
           {tab === "website"
             ? "Brand the app for your team — accent color, background, font, and the top-left logo. Changes apply to everyone."
-            : "Tune the scout forms for your team — uncheck a question to strike it out, trash it to remove it, add your own. Changes apply to everyone on the team."}
+            : "Tune the scout forms for your team — uncheck a question to strike it out, trash it to remove it, add your own sections and questions. Changes apply to everyone on the team."}
         </p>
       </div>
 
@@ -391,6 +442,78 @@ export default function FormSettingsPage() {
           </section>
 
           <section className="flex flex-col gap-3">
+            <h2 className="section-title">Your team&apos;s sections</h2>
+            <p className="-mt-1 text-xs text-graphite-500">
+              Sections you add render after the default ones, in this order. A
+              section shows up on the {FORMS[formKey].label} form once it has at
+              least one question.
+            </p>
+
+            {customSections.length > 0 && (
+              <ul className="surface-card divide-y divide-graphite-100">
+                {customSections.map((title) => {
+                  const questionCount = draft.customFields.filter(
+                    (field) => field.section === title,
+                  ).length;
+                  return (
+                    <li
+                      key={title}
+                      className="flex items-center justify-between gap-3 px-4 py-2.5"
+                    >
+                      <div className="flex min-w-0 flex-col">
+                        <span className="truncate text-sm text-graphite-900">
+                          {title}
+                        </span>
+                        <span className="text-xs text-graphite-500">
+                          {questionCount} question
+                          {questionCount === 1 ? "" : "s"}
+                        </span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => removeSection(title)}
+                        aria-label={`Remove section ${title}`}
+                        title={
+                          questionCount > 0
+                            ? `Remove section — its questions move to “${CUSTOM_SECTION_TITLE}”`
+                            : "Remove section"
+                        }
+                        className="shrink-0 rounded-md p-1.5 text-graphite-500 transition hover:bg-maroon-50 hover:text-maroon-600 dark:hover:text-maroon-400"
+                      >
+                        <TrashIcon />
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+
+            <form
+              className="surface-panel flex flex-col gap-3 p-4"
+              onSubmit={(e) => {
+                e.preventDefault();
+                addSection();
+              }}
+            >
+              <label className="flex flex-col gap-1.5">
+                <span className="text-sm font-medium text-graphite-700">
+                  Section name
+                </span>
+                <input
+                  type="text"
+                  value={newSectionTitle}
+                  onChange={(e) => setNewSectionTitle(e.target.value)}
+                  placeholder="e.g. Defense"
+                  className="field-input"
+                />
+              </label>
+              <button type="submit" className="btn-secondary self-start">
+                Add section
+              </button>
+            </form>
+          </section>
+
+          <section className="flex flex-col gap-3">
             <h2 className="section-title">Your team&apos;s questions</h2>
             {draft.customFields.length > 0 && (
               <ul className="surface-card divide-y divide-graphite-100">
@@ -470,11 +593,11 @@ export default function FormSettingsPage() {
                     Section
                   </span>
                   <select
-                    value={newSection}
+                    value={selectedSection}
                     onChange={(e) => setNewSection(e.target.value)}
                     className="field-input"
                   >
-                    {[...new Set(sectionChoices)].map((title) => (
+                    {sectionChoices.map((title) => (
                       <option key={title} value={title}>
                         {title}
                       </option>

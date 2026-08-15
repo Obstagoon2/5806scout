@@ -45,6 +45,7 @@ describe("applyCustomization", () => {
     const result = applyCustomization(DEFAULTS, {
       hiddenFieldIds: ["endgame", "autoScoredLow"],
       removedFieldIds: [],
+      customSections: [],
       customFields: [],
     });
     expect(result).toEqual([
@@ -61,6 +62,7 @@ describe("applyCustomization", () => {
     const result = applyCustomization(DEFAULTS, {
       hiddenFieldIds: ["autoScoredLow"],
       removedFieldIds: ["endgame"],
+      customSections: [],
       customFields: [],
     });
     expect(result).toEqual([
@@ -77,6 +79,7 @@ describe("applyCustomization", () => {
     const result = applyCustomization(DEFAULTS, {
       hiddenFieldIds: [],
       removedFieldIds: [],
+      customSections: [],
       customFields: [custom({ id: "custom_climb", section: "Endgame", kind: "counter" })],
     });
     const endgame = result.find((s) => s.title === "Endgame");
@@ -87,6 +90,7 @@ describe("applyCustomization", () => {
     const result = applyCustomization(DEFAULTS, {
       hiddenFieldIds: [],
       removedFieldIds: [],
+      customSections: [],
       customFields: [custom({ id: "custom_a" }), custom({ id: "custom_b" })],
     });
     const last = result[result.length - 1];
@@ -98,6 +102,7 @@ describe("applyCustomization", () => {
     const result = applyCustomization(DEFAULTS, {
       hiddenFieldIds: ["endgame"],
       removedFieldIds: [],
+      customSections: [],
       customFields: [custom({ id: "custom_climb", section: "Endgame" })],
     });
     const endgame = result.find((s) => s.title === "Endgame");
@@ -108,6 +113,7 @@ describe("applyCustomization", () => {
     const result = applyCustomization(DEFAULTS, {
       hiddenFieldIds: [],
       removedFieldIds: [],
+      customSections: [],
       customFields: [
         custom({ id: "endgame", label: "Impostor" }),
         custom({ id: "custom_a", label: "First" }),
@@ -119,10 +125,79 @@ describe("applyCustomization", () => {
     expect(last.fields[0].label).toBe("First");
   });
 
+  it("renders team-added sections after the defaults, in declared order", () => {
+    const result = applyCustomization(DEFAULTS, {
+      hiddenFieldIds: [],
+      removedFieldIds: [],
+      customSections: ["Defense", "Strategy"],
+      customFields: [
+        custom({ id: "custom_strat", section: "Strategy" }),
+        custom({ id: "custom_def", section: "Defense" }),
+      ],
+    });
+    expect(result.map((s) => s.title)).toEqual([
+      "Autonomous",
+      "Endgame",
+      "Defense",
+      "Strategy",
+    ]);
+  });
+
+  it("drops a team-added section that has no questions yet", () => {
+    const result = applyCustomization(DEFAULTS, {
+      hiddenFieldIds: [],
+      removedFieldIds: [],
+      customSections: ["Empty"],
+      customFields: [],
+    });
+    expect(result.map((s) => s.title)).toEqual(["Autonomous", "Endgame"]);
+  });
+
+  it("keeps a team-added section titled like a default from duplicating it", () => {
+    const result = applyCustomization(DEFAULTS, {
+      hiddenFieldIds: [],
+      removedFieldIds: [],
+      customSections: ["Endgame"],
+      customFields: [custom({ id: "custom_climb", section: "Endgame" })],
+    });
+    expect(result.filter((s) => s.title === "Endgame")).toHaveLength(1);
+    expect(
+      result.find((s) => s.title === "Endgame")?.fields.map((f) => f.id),
+    ).toEqual(["endgame", "custom_climb"]);
+  });
+
+  it("maps drawing and photo customs to their field defs", () => {
+    const result = applyCustomization(DEFAULTS, {
+      hiddenFieldIds: [],
+      removedFieldIds: [],
+      customSections: [],
+      customFields: [
+        custom({ id: "custom_map", kind: "drawing", required: true }),
+        custom({ id: "custom_pic", kind: "photo" }),
+      ],
+    });
+    const last = result[result.length - 1];
+    expect(last.fields).toEqual([
+      {
+        kind: "drawing",
+        id: "custom_map",
+        label: "Custom Q",
+        required: true,
+      },
+      { kind: "photo", id: "custom_pic", label: "Custom Q", required: undefined },
+    ]);
+    // A photo/drawing answer is a data URL string, so required validation
+    // treats an untaken photo (null) as missing like any other field.
+    expect(missingRequiredFields(result, emptyValues(result))).toContain(
+      "Custom Q",
+    );
+  });
+
   it("produces fields that work with emptyValues and required validation", () => {
     const sections = applyCustomization(DEFAULTS, {
       hiddenFieldIds: [],
       removedFieldIds: [],
+      customSections: [],
       customFields: [
         custom({ id: "custom_req", required: true }),
         custom({ id: "custom_tally", kind: "counter" }),
@@ -162,6 +237,13 @@ describe("sanitizeScoutFormsConfig", () => {
     expect(config.matchScout.customFields).toEqual([
       { id: "custom_ok", kind: "text", label: "Fine", section: "Teleop" },
     ]);
+  });
+
+  it("trims custom section titles and drops blanks and duplicates", () => {
+    const config = sanitizeScoutFormsConfig({
+      pitScout: { customSections: ["  Defense ", "Defense", "", 7, null, "Pit"] },
+    });
+    expect(config.pitScout.customSections).toEqual(["Defense", "Pit"]);
   });
 
   it("keeps string removedFieldIds and drops malformed ones", () => {
