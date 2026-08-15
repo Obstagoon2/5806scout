@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   assignMatchScouts,
   assignPitScouts,
+  completedLast,
   shuffle,
   slotKey,
   upcomingSlots,
@@ -131,5 +132,27 @@ describe("slotKey", () => {
     expect(slotKey({ matchKey: "2026test_qm2", teamNumber: 7 })).toBe(
       "2026test_qm2:7",
     );
+  });
+});
+
+describe("completedLast", () => {
+  it("sinks crossed-off entries to the bottom, keeping each group's order", () => {
+    const teams = [11, 22, 33, 44, 55];
+    const done = new Set([22, 44]);
+    expect(completedLast(teams, (t) => done.has(t))).toEqual([
+      11, 33, 55, 22, 44,
+    ]);
+  });
+
+  it("handles all-done, none-done and empty lists", () => {
+    expect(completedLast([1, 2], () => true)).toEqual([1, 2]);
+    expect(completedLast([1, 2], () => false)).toEqual([1, 2]);
+    expect(completedLast([], () => true)).toEqual([]);
+  });
+
+  it("leaves the source list untouched", () => {
+    const teams = [1, 2, 3];
+    completedLast(teams, (t) => t === 1);
+    expect(teams).toEqual([1, 2, 3]);
   });
 });

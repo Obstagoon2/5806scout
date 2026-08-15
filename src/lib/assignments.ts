@@ -40,6 +40,19 @@ export function slotKey(
 }
 
 /**
+ * Stable partition that sinks crossed-off entries to the end of the list, so
+ * a scout's remaining work always sits at the top. Relative order inside each
+ * group is preserved (teams stay numerically sorted, slots stay in match
+ * order).
+ */
+export function completedLast<T>(
+  items: readonly T[],
+  isDone: (item: T) => boolean,
+): T[] {
+  return [...items.filter((item) => !isDone(item)), ...items.filter(isDone)];
+}
+
+/**
  * The scout's slots in the next `lookahead` unplayed matches, tagged with
  * how far out the match is (0 = on the field now, 1 = up next). Drives the
  * "your scouting match is up" banner.

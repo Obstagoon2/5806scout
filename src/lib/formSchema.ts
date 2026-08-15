@@ -47,6 +47,24 @@ export type FieldDef =
       id: string;
       label: string;
       max?: number;
+    }
+  | {
+      // Freehand sketch pad — auto paths drawn over a field backdrop. The
+      // value is a PNG data URL (see MAX_IMAGE_DATA_URL_BYTES).
+      kind: "drawing";
+      id: string;
+      label: string;
+      hint?: string;
+      required?: boolean;
+    }
+  | {
+      // Camera / file capture. The value is a compressed JPEG data URL, small
+      // enough to ride inside the Firestore submission doc.
+      kind: "photo";
+      id: string;
+      label: string;
+      hint?: string;
+      required?: boolean;
     };
 
 export interface FormSection {

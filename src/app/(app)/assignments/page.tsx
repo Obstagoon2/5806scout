@@ -2,6 +2,7 @@
 
 import { useAuth } from "@/lib/auth/AuthProvider";
 import {
+  completedLast,
   slotKey,
   type MatchAssignmentsDoc,
   type MatchSlot,
@@ -206,7 +207,7 @@ function PitView({
             <p className="text-sm text-graphite-500">No teams assigned.</p>
           ) : (
             <ul className="flex flex-wrap gap-2">
-              {teams.map((t) => {
+              {completedLast(teams, (t) => completed.has(t)).map((t) => {
                 const done = completed.has(t);
                 // Scouts cross off their own teams; admins can fix anyone's.
                 const canToggle = isAdmin || uid === myUid;
@@ -284,7 +285,9 @@ function MatchView({
             </tr>
           </thead>
           <tbody className="divide-y divide-graphite-100">
-            {slots.map((slot) => {
+            {completedLast(slots, (slot) =>
+              completed.has(slotKey(slot)),
+            ).map((slot) => {
               const key = slotKey(slot);
               const done = completed.has(key);
               const canToggle = isAdmin || slot.uid === myUid;

@@ -1,5 +1,7 @@
 "use client";
 
+import { DrawingPad } from "@/components/DrawingPad";
+import { PhotoCapture } from "@/components/PhotoCapture";
 import type { FieldDef, FormSection, FormValues } from "@/lib/formSchema";
 
 interface SchemaFormProps {
@@ -148,6 +150,26 @@ function Field({
         </div>
       );
     }
+    case "drawing":
+      return (
+        <DrawingPad
+          label={field.label}
+          hint={field.hint}
+          required={field.required}
+          value={(value as string) ?? null}
+          onChange={onChange}
+        />
+      );
+    case "photo":
+      return (
+        <PhotoCapture
+          label={field.label}
+          hint={field.hint}
+          required={field.required}
+          value={(value as string) ?? null}
+          onChange={onChange}
+        />
+      );
     case "multiselect": {
       const selected = (value as string[]) ?? [];
       // Not a <label>: wrapping buttons in a label steals their accessible

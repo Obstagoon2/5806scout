@@ -1,7 +1,9 @@
 "use client";
 
+import { MyMatchAssignments } from "@/components/MyAssignments";
 import { ReliabilityWarning } from "@/components/ReliabilityFlags";
 import { SchemaForm } from "@/components/SchemaForm";
+import { slotKey, type MatchSlot } from "@/lib/assignments";
 import { useAuth } from "@/lib/auth/AuthProvider";
 import { db } from "@/lib/firebase/client";
 import {
@@ -22,6 +24,7 @@ import {
   query,
   serverTimestamp,
   setDoc,
+  updateDoc,
 } from "firebase/firestore";
 import { useEffect, useState } from "react";
 
@@ -54,6 +57,10 @@ export default function MatchScoutPage() {
   const [status, setStatus] = useState<Status>({ state: "idle" });
   const [reliabilityIssue, setReliabilityIssue] = useState(false);
   const [recent, setRecent] = useState<RecentSubmission[]>([]);
+  // The assignment row the scout loaded this form from, so a successful
+  // submit can cross it off. Submitting clears it; if the scout edited the
+  // match or team in between, the guard at submit time skips the cross-off.
+  const [pickedSlot, setPickedSlot] = useState<MatchSlot | null>(null);
 
   useEffect(() => {
     // If the customization arrives (or changes) mid-entry, add keys for any
@@ -145,6 +152,24 @@ export default function MatchScoutPage() {
         { merge: true },
       );
 
+      // Submitting is what "done" means for the assignment row this form was
+      // loaded from — cross it off so the scout's list shrinks as they work.
+      if (
+        pickedSlot &&
+        pickedSlot.matchNumber === match &&
+        String(pickedSlot.teamNumber) === team
+      ) {
+        try {
+          await updateDoc(
+            doc(db, "teams", dataTeamId, "config", "matchAssignments"),
+            { completedSlots: arrayUnion(slotKey(pickedSlot)) },
+          );
+        } catch {
+          // The submission landed regardless; the scout can tick the row.
+        }
+      }
+      setPickedSlot(null);
+
       // Reset for the next match: bump match number, keep alliance (a scout
       // usually watches the same station), clear team + tallies + the flag.
       setMatchNumber(String(match + 1));
@@ -173,6 +198,16 @@ export default function MatchScoutPage() {
           One submission per robot per match — tally as you watch.
         </p>
       </div>
+
+      <MyMatchAssignments
+        onPick={(slot) => {
+          setMatchNumber(String(slot.matchNumber));
+          setScoutedTeam(String(slot.teamNumber));
+          setAlliance(slot.alliance);
+          setPickedSlot(slot);
+          if (status.state !== "saving") setStatus({ state: "idle" });
+        }}
+      />
 
       <div className="surface-card flex flex-col gap-4 p-4 md:p-6">
         <div className="grid grid-cols-2 gap-3">

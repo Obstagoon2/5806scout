@@ -1,5 +1,6 @@
 "use client";
 
+import { MyPitAssignments } from "@/components/MyAssignments";
 import { SchemaForm } from "@/components/SchemaForm";
 import { useAuth } from "@/lib/auth/AuthProvider";
 import { db } from "@/lib/firebase/client";
@@ -8,14 +9,18 @@ import {
   missingRequiredFields,
   type FormValues,
 } from "@/lib/formSchema";
+import { splitMediaValues } from "@/lib/formMedia";
+import { PIT_MEDIA_COLLECTION } from "@/lib/pitScoutSchema";
 import { useScoutForms } from "@/lib/useScoutForms";
 import {
+  arrayUnion,
   collection,
   doc,
   getDoc,
   onSnapshot,
   serverTimestamp,
   setDoc,
+  updateDoc,
 } from "firebase/firestore";
 import { useEffect, useState } from "react";
 
@@ -61,15 +66,17 @@ export default function PitScoutPage() {
     setActiveTeam(trimmed);
     setTeamInput("");
 
-    const snapshot = await getDoc(
-      doc(db, "teams", dataTeamId, "pitScouting", trimmed),
-    );
-    const existing = snapshot.data();
-    setValues(
-      existing?.values
-        ? { ...emptyValues(pitSections), ...existing.values }
-        : emptyValues(pitSections),
-    );
+    // Photos and drawings live in a sibling doc (see formMedia.ts) — fetch
+    // both and reassemble one set of answers for the form.
+    const [snapshot, mediaSnapshot] = await Promise.all([
+      getDoc(doc(db, "teams", dataTeamId, "pitScouting", trimmed)),
+      getDoc(doc(db, "teams", dataTeamId, PIT_MEDIA_COLLECTION, trimmed)),
+    ]);
+    setValues({
+      ...emptyValues(pitSections),
+      ...(snapshot.data()?.values as FormValues | undefined),
+      ...(mediaSnapshot.data()?.values as FormValues | undefined),
+    });
   }
 
   async function handleSave() {
@@ -82,6 +89,7 @@ export default function PitScoutPage() {
     }
 
     setStatus({ state: "saving" });
+    const { core, media } = splitMediaValues(pitSections, values);
     try {
       // merge: two scouts editing the same robot offline both land their
       // fields on sync instead of the last save wiping the other's work.
@@ -89,13 +97,38 @@ export default function PitScoutPage() {
         doc(db, "teams", dataTeamId, "pitScouting", activeTeam),
         {
           scoutedTeam: activeTeam,
-          values,
+          values: core,
           scoutName: profile.fullName,
           scoutUid: user.uid,
           updatedAt: serverTimestamp(),
         },
         { merge: true },
       );
+      if (Object.keys(media).length > 0) {
+        await setDoc(
+          doc(db, "teams", dataTeamId, PIT_MEDIA_COLLECTION, activeTeam),
+          {
+            scoutedTeam: activeTeam,
+            values: media,
+            updatedAt: serverTimestamp(),
+          },
+          { merge: true },
+        );
+      }
+      // Saving a robot's form is what "done" means for a pit assignment, so
+      // cross it off here rather than making the scout tick it twice.
+      const teamNumber = Number(activeTeam);
+      if (Number.isInteger(teamNumber)) {
+        try {
+          await updateDoc(
+            doc(db, "teams", dataTeamId, "config", "pitAssignments"),
+            { completedTeams: arrayUnion(teamNumber) },
+          );
+        } catch {
+          // No assignment set has been generated — the form is saved either
+          // way, which is what the scout cares about.
+        }
+      }
       setStatus({ state: "saved" });
     } catch (err) {
       setStatus({
@@ -116,6 +149,11 @@ export default function PitScoutPage() {
           One form per robot — filled out in the pit, editable any time.
         </p>
       </div>
+
+      <MyPitAssignments
+        activeTeam={activeTeam}
+        onOpenTeam={(teamNumber) => void openTeam(teamNumber)}
+      />
 
       <form
         className="flex gap-2"

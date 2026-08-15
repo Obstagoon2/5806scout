@@ -3,6 +3,10 @@ import type { FormSection } from "@/lib/formSchema";
 // Edit this config (not the form component) when the game changes what's
 // worth asking in the pit. The form at /pit-scout renders whatever is here.
 
+/** Sibling collection holding each robot's photo/drawing answers — see
+ *  src/lib/formMedia.ts for why they don't live in the submission doc. */
+export const PIT_MEDIA_COLLECTION = "pitScoutingMedia";
+
 const YES_NO = ["Yes", "No"] as const;
 
 const SPEED_RANKS = [
@@ -27,6 +31,12 @@ export const PIT_SCOUT_SECTIONS: readonly FormSection[] = [
       { kind: "number", id: "lengthIn", label: "Length", unit: "in", min: 0 },
       { kind: "number", id: "widthIn", label: "Width", unit: "in", min: 0 },
       { kind: "number", id: "heightIn", label: "Height", unit: "in", min: 0 },
+      {
+        kind: "photo",
+        id: "robotPhoto",
+        label: "Robot photo",
+        hint: "Shoot the whole robot from the side — it's how the drive team recognizes them at the field.",
+      },
     ],
   },
   {
@@ -37,6 +47,12 @@ export const PIT_SCOUT_SECTIONS: readonly FormSection[] = [
         id: "autoRoutines",
         label: "Auto capabilities / routines",
         placeholder: "What can they do in auto? Starting positions, scoring, mobility…",
+      },
+      {
+        kind: "drawing",
+        id: "autoPathMap",
+        label: "Auto path map",
+        hint: "Sketch their starting spot and the path they run. Red zone is left, blue is right.",
       },
     ],
   },

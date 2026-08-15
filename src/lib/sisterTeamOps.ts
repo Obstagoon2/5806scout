@@ -27,7 +27,14 @@ import {
  * Subcollections copied between the pair's stores on link/unlink so neither
  * team loses data. config is handled separately (picklist stays home).
  */
-const SHARED_COLLECTIONS = ["pitScouting", "matchScouting", "talkie"] as const;
+const SHARED_COLLECTIONS = [
+  "pitScouting",
+  // Photos/drawings for the same robots, split out by doc size — must travel
+  // with pitScouting or a linked pair keeps the answers and loses the images.
+  "pitScoutingMedia",
+  "matchScouting",
+  "talkie",
+] as const;
 const PRIVATE_CONFIG_DOCS = new Set(["picklist"]);
 
 // Firestore caps a WriteBatch at 500 operations.
