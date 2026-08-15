@@ -139,10 +139,30 @@ async function askViaAiSearch(question: string): Promise<AskResult | null> {
             { role: "user", content: question },
           ],
           stream: false,
+          // Same retrieval tuning as the worker (soft-hill-26e4/src/index.ts).
+          // Without it the API defaults to ~10 chunks and no expansion, which
+          // measurably loses answers: a chunk can end mid-heading ("6.5.3
+          // Point Values … detailed in Table 6-4.") so the model sees the
+          // pointer to the scoring table but never the table, and replies
+          // "the excerpts do not contain the answer". context_expansion pulls
+          // in the neighbouring chunk, which is where those values live.
+          ai_search_options: {
+            retrieval: { max_num_results: 6, context_expansion: 1 },
+            // No history is sent from here, so rewriting is pure latency.
+            query_rewrite: { enabled: false },
+          },
         }),
       },
     );
-    if (!res.ok) return null;
+    if (!res.ok) {
+      // Falling back to the worker keeps answers flowing, but a silent switch
+      // hides a bad token or a rejected option shape — leave a trace in the
+      // function logs so it's diagnosable rather than invisible.
+      console.warn(
+        `manual-qa: AI Search REST returned ${res.status}; falling back to the worker.`,
+      );
+      return null;
+    }
     const body = (await res.json()) as CfAiSearchResponse;
     const payload = body.result ?? body;
     const answer = payload.choices?.[0]?.message?.content ?? "";

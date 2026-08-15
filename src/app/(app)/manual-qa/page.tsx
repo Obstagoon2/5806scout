@@ -90,7 +90,10 @@ export default function ManualQaPage() {
           Manual Q&amp;A
         </h1>
         <p className="mt-1 text-sm text-graphite-500">
-          {ready
+          {/* The in-app AI Search path knows the index is live but not how big
+              it is, so it reports 0 — showing "0 manual sections loaded" reads
+              as broken. Mention the count only when we actually have one. */}
+          {ready && (status?.chunkCount ?? 0) > 0
             ? `Ask rules questions and get cited answers — ${status?.chunkCount} manual sections loaded.`
             : "Ask rules questions and get cited answers from the game manual."}
         </p>
