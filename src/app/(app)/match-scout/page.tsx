@@ -788,8 +788,6 @@ export default function MatchScoutPage() {
           <Segmented
             label="Starting position"
             options={[
-              "Depot side",
-              "Outpost side",
               "Depot side bump",
               "Outpost side bump",
               "Depot side trench",

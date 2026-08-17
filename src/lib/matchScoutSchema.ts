@@ -30,8 +30,6 @@ export const MATCH_SCOUT_SECTIONS: readonly FormSection[] = [
         // Paired depot/outpost so the picker lays out as two mirrored
         // columns; Center is the odd one out and sits last.
         options: [
-          "Depot side",
-          "Outpost side",
           "Depot side bump",
           "Outpost side bump",
           "Depot side trench",
