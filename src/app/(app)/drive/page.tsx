@@ -121,7 +121,7 @@ export default function DrivePage() {
       <div>
         <h1 className="flex items-center gap-2.5 text-xl font-semibold text-graphite-900">
           <span aria-hidden className="h-5 w-1.5 bg-maroon-600" />
-          Drive
+          Drive Dash
         </h1>
         <p className="mt-1 text-sm text-graphite-500">
           Team {team?.teamNumber}&apos;s upcoming matches, predicted from your
