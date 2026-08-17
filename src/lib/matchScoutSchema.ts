@@ -123,9 +123,10 @@ export const MATCH_SCOUT_SECTIONS: readonly FormSection[] = [
       // Ratings ride as counters so the Data tab averages them per team; the
       // Match Scout page renders them as 0–5 scales, and drive.ts weights
       // them at 0 points so they never leak into score predictions.
-      // Shooter rate, set on a 1–25 slider rather than tallied. It's an
-      // observation about the robot, not an event count, so like the ratings
-      // it carries no point weight.
+      // Shooter rate, set on a 1–25 slider in tenths rather than tallied. It's
+      // an observation about the robot, not an event count, so like the
+      // ratings it carries no point weight — and unlike every other counter
+      // here its value is fractional.
       { kind: "counter", id: "fuelRate", label: "Fuel rate (balls/sec)", max: 25 },
       { kind: "counter", id: "driverSkill", label: "Driver skill (0–5)", max: 5 },
       { kind: "counter", id: "defenseSkill", label: "Defense skill (0–5)", max: 5 },

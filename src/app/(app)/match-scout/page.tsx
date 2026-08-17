@@ -284,24 +284,29 @@ function RatingScale({
 }
 
 /**
- * Shooter rate on a 1–25 slider. Zero isn't on the scale — it means the scout
- * never set it — so the readout stays a dash until the slider is moved rather
- * than reporting a robot at 1 ball/sec it never earned.
+ * Shooter rate on a 1–25 slider, in tenths — the difference between a 7.5 and
+ * an 8.2 robot is a real one at the top of a picklist. Zero isn't on the scale
+ * — it means the scout never set it — so the readout stays a dash until the
+ * slider moves rather than reporting a robot at 1 ball/sec it never earned.
  */
 function RateSlider({
   label,
   min,
   max,
+  step,
   value,
   onChange,
 }: {
   label: string;
   min: number;
   max: number;
+  step: number;
   value: number;
   onChange: (value: number) => void;
 }) {
   const isSet = value >= min;
+  // Tenths throughout, so 8 and 8.0 never render as different-looking answers.
+  const decimals = step < 1 ? 1 : 0;
   return (
     <div className="flex flex-col gap-1.5">
       <div className="flex items-baseline justify-between gap-2">
@@ -312,7 +317,7 @@ function RateSlider({
           {label}
         </label>
         <span className="stat text-lg font-semibold text-graphite-900">
-          {isSet ? value : "—"}
+          {isSet ? value.toFixed(decimals) : "—"}
         </span>
       </div>
       <input
@@ -320,9 +325,13 @@ function RateSlider({
         type="range"
         min={min}
         max={max}
-        step={1}
+        step={step}
         value={isSet ? value : min}
-        onChange={(e) => onChange(Number(e.target.value))}
+        // Snapped to the step so no float noise ("8.200000000000001") can
+        // reach the submission and throw off a per-team average.
+        onChange={(e) =>
+          onChange(Number(Number(e.target.value).toFixed(decimals)))
+        }
         className="h-11 w-full accent-maroon-600"
       />
       <div className="stat flex justify-between text-xs text-graphite-400">
@@ -966,6 +975,7 @@ export default function MatchScoutPage() {
                     label="Fuel rate (balls/sec)"
                     min={1}
                     max={25}
+                    step={0.1}
                     value={(values.fuelRate as number) ?? 0}
                     onChange={(v) => setValue("fuelRate", v)}
                   />
