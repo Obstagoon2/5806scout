@@ -9,9 +9,7 @@ import {
 } from "@/lib/aggregate";
 import {
   buildTeamProfiles,
-  sanitizeScoringWeights,
-  SCORING_DOC_ID,
-  type ScoringWeights,
+  SCORING_WEIGHTS,
 } from "@/lib/drive";
 import type { EventData } from "@/lib/eventData";
 import { db } from "@/lib/firebase/client";
@@ -31,7 +29,6 @@ export default function TeamDetailPage() {
 
   const [event, setEvent] = useState<EventData | null>(null);
   const [submissions, setSubmissions] = useState<MatchSubmission[]>([]);
-  const [weights, setWeights] = useState<ScoringWeights>({});
   const [pitValues, setPitValues] = useState<FormValues | null>(null);
   const [pitScoutName, setPitScoutName] = useState<string | null>(null);
   const [pitMedia, setPitMedia] = useState<FormValues | null>(null);
@@ -70,14 +67,6 @@ export default function TeamDetailPage() {
   }, [dataTeamId, isAdmin]);
 
   useEffect(() => {
-    if (!dataTeamId || !isAdmin) return;
-    return onSnapshot(
-      doc(db, "teams", dataTeamId, "config", SCORING_DOC_ID),
-      (s) => setWeights(sanitizeScoringWeights(s.data())),
-    );
-  }, [dataTeamId, isAdmin]);
-
-  useEffect(() => {
     if (!dataTeamId || !isAdmin || !teamNumber) return;
     const unsubPit = onSnapshot(
       doc(db, "teams", dataTeamId, "pitScouting", teamNumber),
@@ -107,10 +96,10 @@ export default function TeamDetailPage() {
     return buildTeamProfiles(
       matchSections,
       aggregateByTeam(matchSections, submissions),
-      weights,
+      SCORING_WEIGHTS,
       event?.teams ?? [],
     ).get(parsed);
-  }, [matchSections, submissions, weights, event, teamNumber]);
+  }, [matchSections, submissions, event, teamNumber]);
 
   const aggregate = useMemo(
     () => aggregateByTeam(matchSections, teamSubmissions)[0] ?? null,

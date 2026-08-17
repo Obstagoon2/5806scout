@@ -10,27 +10,19 @@ import {
   type CustomFieldKind,
   type FormCustomization,
 } from "@/lib/customForms";
-import {
-  DEFAULT_WEIGHT,
-  sanitizeScoringWeights,
-  SCORING_DOC_ID,
-  type ScoringWeights,
-} from "@/lib/drive";
 import { db } from "@/lib/firebase/client";
 import type { FormSection } from "@/lib/formSchema";
-import { MATCH_SCOUT_SECTIONS } from "@/lib/matchScoutSchema";
 import { PIT_SCOUT_SECTIONS } from "@/lib/pitScoutSchema";
 import { useScoutForms } from "@/lib/useScoutForms";
-import { doc, onSnapshot, serverTimestamp, setDoc } from "firebase/firestore";
-import { useEffect, useState } from "react";
-
-type FormKey = "pitScout" | "matchScout";
-type Tab = FormKey | "scoring" | "website";
+import { doc, serverTimestamp, setDoc } from "firebase/firestore";
+import { useState } from "react";
+// The Match Scout form is no longer editable here: it's a bespoke REBUILT
+// screen (see match-scout/page.tsx) whose fields are fixed by the game.
+type FormKey = "pitScout";
+type Tab = FormKey | "website";
 
 const TAB_LABELS: Record<Tab, string> = {
   pitScout: "Pit Scout",
-  matchScout: "Match Scout",
-  scoring: "Scoring",
   website: "Website Customization",
 };
 
@@ -39,7 +31,6 @@ const FORMS: Record<
   { label: string; sections: readonly FormSection[] }
 > = {
   pitScout: { label: "Pit Scout", sections: PIT_SCOUT_SECTIONS },
-  matchScout: { label: "Match Scout", sections: MATCH_SCOUT_SECTIONS },
 };
 
 const KIND_LABELS: Record<CustomFieldKind, string> = {
@@ -107,13 +98,12 @@ function RestoreIcon() {
 
 export default function FormSettingsPage() {
   const { profile, user, dataTeamId } = useAuth();
-  const { config, matchSections } = useScoutForms();
+  const { config } = useScoutForms();
 
   const [tab, setTab] = useState<Tab>("pitScout");
   // Form editing only ever operates on a real form; on the other tabs this
   // falls back to pitScout but the form body below isn't rendered.
-  const formKey: FormKey =
-    tab === "website" || tab === "scoring" ? "pitScout" : tab;
+  const formKey: FormKey = tab === "website" ? "pitScout" : tab;
   // Local working copy of both customizations — null until the first edit,
   // when it forks from the live config. Edits stay local until Save writes
   // the whole doc back.
@@ -122,11 +112,7 @@ export default function FormSettingsPage() {
     FormCustomization
   > | null>(null);
   const [status, setStatus] = useState<Status>({ state: "idle" });
-  const working =
-    drafts ??
-    (config
-      ? { pitScout: config.pitScout, matchScout: config.matchScout }
-      : null);
+  const working = drafts ?? (config ? { pitScout: config.pitScout } : null);
 
   // New-question builder state.
   const [newLabel, setNewLabel] = useState("");
@@ -135,22 +121,6 @@ export default function FormSettingsPage() {
   const [newOptions, setNewOptions] = useState("");
   const [newRequired, setNewRequired] = useState(false);
   const [newSectionTitle, setNewSectionTitle] = useState("");
-
-  // Scoring tab: live saved weights plus local string drafts, so a cleared
-  // input doesn't snap back to a number mid-edit.
-  const [savedWeights, setSavedWeights] = useState<ScoringWeights>({});
-  const [weightDrafts, setWeightDrafts] = useState<Record<
-    string,
-    string
-  > | null>(null);
-
-  useEffect(() => {
-    if (!dataTeamId) return;
-    return onSnapshot(
-      doc(db, "teams", dataTeamId, "config", SCORING_DOC_ID),
-      (snapshot) => setSavedWeights(sanitizeScoringWeights(snapshot.data())),
-    );
-  }, [dataTeamId]);
 
   const isAdmin = profile?.role === "admin";
 
@@ -304,66 +274,16 @@ export default function FormSettingsPage() {
     }));
   }
 
-  // Counter questions on the effective Match Scout form — the fields whose
-  // point values drive the Drive dashboard's predictions.
-  const matchCounters = matchSections.flatMap((section) =>
-    section.fields
-      .filter((field) => field.kind === "counter")
-      .map((field) => ({ id: field.id, label: field.label, section: section.title })),
-  );
-
-  function weightInput(fieldId: string): string {
-    return (
-      weightDrafts?.[fieldId] ?? String(savedWeights[fieldId] ?? DEFAULT_WEIGHT)
-    );
-  }
-
-  function setWeightInput(fieldId: string, value: string) {
-    setWeightDrafts((prev) => {
-      const base =
-        prev ??
-        Object.fromEntries(matchCounters.map((f) => [f.id, weightInput(f.id)]));
-      return { ...base, [fieldId]: value };
-    });
-    if (status.state !== "idle") setStatus({ state: "idle" });
-  }
-
-  async function handleSaveScoring() {
-    if (!profile || !user || !dataTeamId) return;
-    const weights: ScoringWeights = {};
-    for (const field of matchCounters) {
-      const parsed = Number(weightInput(field.id));
-      if (Number.isFinite(parsed) && parsed >= 0 && parsed !== DEFAULT_WEIGHT) {
-        weights[field.id] = parsed;
-      }
-    }
-    setStatus({ state: "saving" });
-    try {
-      await setDoc(doc(db, "teams", dataTeamId, "config", SCORING_DOC_ID), {
-        weights,
-        updatedAt: serverTimestamp(),
-        updatedByUid: user.uid,
-        updatedByName: profile.fullName,
-      });
-      setWeightDrafts(null);
-      setStatus({ state: "saved" });
-    } catch (err) {
-      setStatus({
-        state: "error",
-        message: err instanceof Error ? err.message : "Save failed",
-      });
-    }
-  }
-
   async function handleSave() {
     if (!working || !profile || !user || !dataTeamId) return;
     setStatus({ state: "saving" });
     try {
+      // merge keeps any legacy matchScout customization in the doc untouched
+      // — harmless now that nothing reads it.
       await setDoc(
         doc(db, "teams", dataTeamId, "config", SCOUT_FORMS_DOC_ID),
         {
           pitScout: working.pitScout,
-          matchScout: working.matchScout,
           updatedAt: serverTimestamp(),
           updatedByUid: user.uid,
           updatedByName: profile.fullName,
@@ -391,9 +311,7 @@ export default function FormSettingsPage() {
         <p className="mt-1 text-sm text-graphite-500">
           {tab === "website"
             ? "Brand the app for your team — accent color, background, font, and the top-left logo. Changes apply to everyone."
-            : tab === "scoring"
-              ? "Set what each Match Scout counter is worth in points. The Drive dashboard multiplies scouted averages by these to predict match scores."
-              : "Tune the scout forms for your team — uncheck a question to strike it out, trash it to remove it, add your own sections and questions. Changes apply to everyone on the team."}
+            : "Tune the Pit Scout form for your team — uncheck a question to strike it out, trash it to remove it, add your own sections and questions. Changes apply to everyone on the team. (The Match Scout form is built for this season's game and isn't editable.)"}
         </p>
       </div>
 
@@ -416,79 +334,13 @@ export default function FormSettingsPage() {
 
       {tab === "website" && <AppearanceEditor />}
 
-      {tab === "scoring" && (
-        <>
-          <div className="surface-card p-4">
-            <ul className="flex flex-col divide-y divide-graphite-100">
-              {matchCounters.map((field) => (
-                <li
-                  key={field.id}
-                  className="flex items-center justify-between gap-3 py-2"
-                >
-                  <div className="flex min-w-0 flex-col">
-                    <span className="truncate text-sm text-graphite-700">
-                      {field.label}
-                    </span>
-                    <span className="text-xs text-graphite-500">
-                      {field.section}
-                    </span>
-                  </div>
-                  <label className="flex shrink-0 items-center gap-1.5">
-                    <input
-                      type="number"
-                      min={0}
-                      step={0.5}
-                      inputMode="decimal"
-                      value={weightInput(field.id)}
-                      onChange={(e) => setWeightInput(field.id, e.target.value)}
-                      aria-label={`Points per ${field.label}`}
-                      className="field-input stat w-20 text-right"
-                    />
-                    <span className="text-xs text-graphite-500">pts</span>
-                  </label>
-                </li>
-              ))}
-              {matchCounters.length === 0 && (
-                <li className="py-6 text-center text-sm text-graphite-500">
-                  The Match Scout form has no counter questions to score.
-                </li>
-              )}
-            </ul>
-          </div>
-          <p className="-mt-3 text-xs text-graphite-500">
-            Set a counter to 0 to keep it out of predictions (misses, fouls).
-            Unset counters count 1 point each.
-          </p>
-
-          {status.state === "error" && (
-            <p className="badge-error rounded-md px-3 py-2 text-sm normal-case tracking-normal">
-              {status.message}
-            </p>
-          )}
-          {status.state === "saved" && (
-            <p className="badge-success rounded-md px-3 py-2 text-sm normal-case tracking-normal">
-              Saved — the Drive dashboard reflects the new weights immediately.
-            </p>
-          )}
-
-          <button
-            type="button"
-            onClick={() => void handleSaveScoring()}
-            disabled={status.state === "saving" || matchCounters.length === 0}
-            className="btn-primary"
-          >
-            {status.state === "saving" ? "Saving…" : "Save scoring"}
-          </button>
-        </>
-      )}
-
-      {tab !== "website" && tab !== "scoring" && !draft && (
+      {tab !== "website" && !draft && (
         <div className="surface-panel px-6 py-10 text-center text-sm text-graphite-500">
           Loading your team&apos;s form settings…
         </div>
       )}
 
-      {tab !== "website" && tab !== "scoring" && draft && (
+      {tab !== "website" && draft && (
         <>
           <section className="flex flex-col gap-3">
             <h2 className="section-title">Default questions</h2>

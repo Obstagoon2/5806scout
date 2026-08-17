@@ -8,7 +8,6 @@ import {
   predictAlliance,
   predictMatch,
   redWinProbability,
-  sanitizeScoringWeights,
   scoutedPoints,
   upcomingTeamMatches,
 } from "@/lib/drive";
@@ -51,22 +50,6 @@ function match(overrides: Partial<EventMatch>): EventMatch {
   };
 }
 
-describe("sanitizeScoringWeights", () => {
-  it("keeps finite non-negative numbers only", () => {
-    expect(
-      sanitizeScoringWeights({
-        weights: { low: 2, high: 5.5, zero: 0, neg: -1, nan: NaN, str: "3" },
-      }),
-    ).toEqual({ low: 2, high: 5.5, zero: 0 });
-  });
-
-  it("returns empty for missing/malformed docs", () => {
-    expect(sanitizeScoringWeights(undefined)).toEqual({});
-    expect(sanitizeScoringWeights({ weights: [1, 2] })).toEqual({});
-    expect(sanitizeScoringWeights("nope")).toEqual({});
-  });
-});
-
 describe("scoutedPoints", () => {
   it("weights counter averages, defaulting unset weights to 1", () => {
     const agg = aggregate("100", { low: 3, high: 2 });
@@ -76,6 +59,26 @@ describe("scoutedPoints", () => {
   it("ignores select fields and missing averages", () => {
     const agg = aggregate("100", { low: 4 });
     expect(scoutedPoints(SECTIONS, agg, {})).toBe(4);
+  });
+
+  it("adds REBUILT climb points from the modal select answers", () => {
+    const agg: TeamAggregate = {
+      team: "100",
+      matches: 4,
+      averages: { low: 3 },
+      modes: { endgame: "Level 2", autoClimb: "Climbed (L1)" },
+    };
+    expect(scoutedPoints(SECTIONS, agg, {})).toBe(3 + 20 + 15);
+  });
+
+  it("scores unlisted climb answers (failed, none) as zero", () => {
+    const agg: TeamAggregate = {
+      team: "100",
+      matches: 4,
+      averages: {},
+      modes: { endgame: "Failed attempt", autoClimb: "No attempt" },
+    };
+    expect(scoutedPoints(SECTIONS, agg, {})).toBe(0);
   });
 });
 

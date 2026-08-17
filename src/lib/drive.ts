@@ -8,33 +8,42 @@ import { counterFieldIds } from "@/lib/aggregate";
 import type { EventMatch, EventTeam } from "@/lib/eventData";
 import type { FormSection } from "@/lib/formSchema";
 
-/** Firestore doc id under teams/{dataTeamId}/config for scoring weights. */
-export const SCORING_DOC_ID = "scoring";
-
-/** Points a counter is worth when the admin hasn't set a weight. */
+/** Points a counter is worth when it has no weight listed below. */
 export const DEFAULT_WEIGHT = 1;
 
-/**
- * Point value per counter field id, as saved from Settings → Scoring. The doc
- * is writable by team members under current rules, so shapes are re-checked
- * here rather than trusted (same stance as sanitizeScoutFormsConfig).
- */
+/** Point value per counter field id. */
 export type ScoringWeights = Record<string, number>;
 
-export function sanitizeScoringWeights(data: unknown): ScoringWeights {
-  if (typeof data !== "object" || data === null || Array.isArray(data)) {
-    return {};
-  }
-  const raw = (data as Record<string, unknown>).weights;
-  if (typeof raw !== "object" || raw === null || Array.isArray(raw)) return {};
-  const weights: ScoringWeights = {};
-  for (const [id, value] of Object.entries(raw)) {
-    if (typeof value === "number" && Number.isFinite(value) && value >= 0) {
-      weights[id] = value;
-    }
-  }
-  return weights;
-}
+/**
+ * What each Match Scout counter is worth, in points — REBUILT (2026) values.
+ *
+ * Set here rather than in the app: scoring is a property of the season's game,
+ * the same for everyone, and not something an admin should be able to get
+ * wrong mid-event. Keys are counter field ids from matchScoutSchema.ts. A
+ * counter with no entry here is worth DEFAULT_WEIGHT.
+ *
+ * Fuel is 1 point apiece in auto and teleop alike. Fed/passed fuel scores
+ * nothing until a partner shoots it (and then it lands in *their* fuel
+ * count), and the 0–5 ratings are judgment calls, not points.
+ */
+export const SCORING_WEIGHTS: ScoringWeights = {
+  autoScoredFuel: 1,
+  teleopScoredFuel: 1,
+  teleopFuelFed: 0,
+  driverSkill: 0,
+  defenseSkill: 0,
+};
+
+/**
+ * Climb points arrive through select fields, not counters, so the predictor
+ * credits a team's *typical* (modal) answer: REBUILT pays 15 for a Level 1
+ * climb in auto and 10/20/30 for Tower Levels 1/2/3 in endgame. Options
+ * missing here (failed attempts, "None") are worth nothing.
+ */
+export const SELECT_MODE_POINTS: Record<string, Record<string, number>> = {
+  autoClimb: { "Climbed (L1)": 15 },
+  endgame: { "Level 1": 10, "Level 2": 20, "Level 3": 30 },
+};
 
 /** A counter where a team clearly stands out from the event field. */
 export interface FieldEdge {
@@ -82,17 +91,29 @@ export function eventFieldAverages(
   return baseline;
 }
 
-/** Weighted points-per-match a team's scouted counter averages add up to. */
+/**
+ * Weighted points-per-match a team's scouted data adds up to: counter
+ * averages times their weights, plus the point value of each climb select's
+ * modal answer (see SELECT_MODE_POINTS).
+ */
 export function scoutedPoints(
   sections: readonly FormSection[],
   aggregate: TeamAggregate,
   weights: ScoringWeights,
 ): number {
-  return counterFieldIds(sections).reduce(
+  const counterPoints = counterFieldIds(sections).reduce(
     (sum, id) =>
       sum + (aggregate.averages[id] ?? 0) * (weights[id] ?? DEFAULT_WEIGHT),
     0,
   );
+  const climbPoints = Object.entries(SELECT_MODE_POINTS).reduce(
+    (sum, [fieldId, byOption]) => {
+      const mode = aggregate.modes[fieldId];
+      return sum + (mode ? (byOption[mode] ?? 0) : 0);
+    },
+    0,
+  );
+  return counterPoints + climbPoints;
 }
 
 /**

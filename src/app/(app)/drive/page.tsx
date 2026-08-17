@@ -5,11 +5,9 @@ import { aggregateByTeam, type MatchSubmission } from "@/lib/aggregate";
 import {
   buildTeamProfiles,
   predictMatch,
-  sanitizeScoringWeights,
-  SCORING_DOC_ID,
+  SCORING_WEIGHTS,
   upcomingTeamMatches,
   type MatchPrediction,
-  type ScoringWeights,
   type TeamStrengthProfile,
 } from "@/lib/drive";
 import type { EventData } from "@/lib/eventData";
@@ -28,7 +26,6 @@ export default function DrivePage() {
   const [event, setEvent] = useState<EventData | null>(null);
   const [eventLoaded, setEventLoaded] = useState(false);
   const [submissions, setSubmissions] = useState<MatchSubmission[]>([]);
-  const [weights, setWeights] = useState<ScoringWeights>({});
   const [now, setNow] = useState(() => Date.now());
 
   useEffect(() => {
@@ -63,14 +60,6 @@ export default function DrivePage() {
     );
   }, [dataTeamId, isAdmin]);
 
-  useEffect(() => {
-    if (!dataTeamId || !isAdmin) return;
-    return onSnapshot(
-      doc(db, "teams", dataTeamId, "config", SCORING_DOC_ID),
-      (s) => setWeights(sanitizeScoringWeights(s.data())),
-    );
-  }, [dataTeamId, isAdmin]);
-
   // Tick the countdown once a second while a scheduled match is coming up.
   useEffect(() => {
     const timer = setInterval(() => setNow(Date.now()), 1000);
@@ -84,10 +73,10 @@ export default function DrivePage() {
       buildTeamProfiles(
         matchSections,
         aggregateByTeam(matchSections, submissions),
-        weights,
+        SCORING_WEIGHTS,
         event?.teams ?? [],
       ),
-    [matchSections, submissions, weights, event],
+    [matchSections, submissions, event],
   );
 
   const predictions = useMemo<MatchPrediction[]>(() => {
