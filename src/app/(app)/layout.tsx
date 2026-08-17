@@ -1,6 +1,6 @@
 import { AppearanceProvider } from "@/components/AppearanceProvider";
 import { AppHeader } from "@/components/AppHeader";
-import { DesktopTabs, MobileBottomNav } from "@/components/AppNav";
+import { DesktopTabs } from "@/components/AppNav";
 import { AssignmentNotifications } from "@/components/AssignmentNotifications";
 import { ReliabilityProvider } from "@/components/ReliabilityFlags";
 import { RequireAuth } from "@/lib/auth/RequireAuth";
@@ -18,10 +18,9 @@ export default function AppShellLayout({
             <AppHeader />
             <DesktopTabs />
             <AssignmentNotifications />
-            <div className="flex-1 pb-[calc(4rem_+_env(safe-area-inset-bottom))] md:pb-0">
-            {children}
-          </div>
-            <MobileBottomNav />
+            <div className="flex-1 pb-[env(safe-area-inset-bottom)] md:pb-0">
+              {children}
+            </div>
           </div>
         </ReliabilityProvider>
       </AppearanceProvider>
