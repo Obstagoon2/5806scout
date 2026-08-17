@@ -12,6 +12,7 @@ import {
   msUntilMatch,
   nextTeamMatch,
 } from "@/lib/pitDashboard";
+import type { NexusMatchStatus, QueueMatch, QueueStatus } from "@/lib/nexus";
 import {
   normalizeStatus,
   STATUS_LABELS,
@@ -30,6 +31,9 @@ import {
 import { useEffect, useState } from "react";
 
 const LIVE_REFRESH_MS = 60_000;
+// Queue status is the number the pit crew acts on and it moves in minutes,
+// not the hour TBA's schedule does — poll it twice as often.
+const QUEUE_REFRESH_MS = 30_000;
 
 interface PitTodoItem {
   id: string;
@@ -48,6 +52,13 @@ interface LiveResponse {
   error?: string;
 }
 
+interface QueueResponse {
+  /** Null when the event doesn't run Nexus queue management. */
+  status?: QueueStatus | null;
+  fetchedAt?: number;
+  error?: string;
+}
+
 export default function PitDashboardPage() {
   const { profile, dataTeamId } = useAuth();
   const isAdmin = profile?.role === "admin";
@@ -57,6 +68,8 @@ export default function PitDashboardPage() {
   const [liveMatches, setLiveMatches] = useState<EventMatch[] | null>(null);
   const [liveError, setLiveError] = useState<string | null>(null);
   const [fetchedAt, setFetchedAt] = useState<number | null>(null);
+  const [queue, setQueue] = useState<QueueStatus | null>(null);
+  const [queueError, setQueueError] = useState<string | null>(null);
   const [now, setNow] = useState(() => Date.now());
 
   // The synced event doc supplies the event key (and a match-list fallback
@@ -102,6 +115,40 @@ export default function PitDashboardPage() {
     };
   }, [isAdmin, event?.eventKey]);
 
+  // Live queueing from FRC Nexus — what the lead queuer is actually calling,
+  // which TBA doesn't publish at all. Only events running Nexus queue
+  // management have it, so a null status is normal, not an error.
+  useEffect(() => {
+    if (!isAdmin || !event?.eventKey) return;
+    const team = profile?.teamId ?? "";
+    let cancelled = false;
+
+    async function load(eventKey: string) {
+      try {
+        const res = await fetch(
+          `/api/event/${encodeURIComponent(eventKey)}/queue?team=${encodeURIComponent(team)}`,
+        );
+        const body = (await res.json()) as QueueResponse;
+        if (cancelled) return;
+        if (!res.ok) {
+          setQueueError(body.error ?? "Could not load Nexus queueing.");
+          return;
+        }
+        setQueue(body.status ?? null);
+        setQueueError(null);
+      } catch {
+        if (!cancelled) setQueueError("Could not reach Nexus — are you online?");
+      }
+    }
+
+    void load(event.eventKey);
+    const timer = setInterval(() => void load(event.eventKey), QUEUE_REFRESH_MS);
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+    };
+  }, [isAdmin, event?.eventKey, profile?.teamId]);
+
   // One-second tick drives the queue countdown and the blink threshold.
   useEffect(() => {
     const timer = setInterval(() => setNow(Date.now()), 1000);
@@ -123,8 +170,33 @@ export default function PitDashboardPage() {
   const onField = currentMatch(matches);
   const lastPlayed = lastPlayedMatch(matches);
   const ourNext = nextTeamMatch(matches, teamNumber);
-  const msToQueue = ourNext ? msUntilMatch(ourNext, now) : null;
-  const queueAlert = ourNext !== null && msToQueue !== null && msToQueue < QUEUE_ALERT_MS;
+
+  // Our upcoming match: Nexus when the event runs its queueing (it knows when
+  // the match is actually being called, not just when it was scheduled), TBA's
+  // published schedule otherwise.
+  const upNext = queue?.ourNext
+    ? {
+        label: queue.ourNext.label,
+        msToQueue:
+          queue.ourNext.queueTime !== null ? queue.ourNext.queueTime - now : null,
+        status: queue.ourNext.status,
+        live: true,
+      }
+    : ourNext
+      ? {
+          label: matchLabel(ourNext),
+          msToQueue: msUntilMatch(ourNext, now),
+          status: null,
+          live: false,
+        }
+      : null;
+
+  // Nexus calling the match is the real "go now" signal; the countdown
+  // threshold only has to stand in when the event isn't on Nexus.
+  const queueAlert =
+    upNext !== null &&
+    ((upNext.status !== null && upNext.status !== "Queuing soon") ||
+      (upNext.msToQueue !== null && upNext.msToQueue < QUEUE_ALERT_MS));
 
   return (
     <main className="mx-auto flex w-full max-w-5xl flex-col gap-6 px-4 py-8 md:px-6">
@@ -135,7 +207,7 @@ export default function PitDashboardPage() {
         </h1>
         <p className="mt-1 text-sm text-graphite-500">
           {event
-            ? `${event.eventName} — live from The Blue Alliance${
+            ? `${event.eventName} — live from ${queue ? "Nexus + The Blue Alliance" : "The Blue Alliance"}${
                 fetchedAt !== null
                   ? `, updated ${new Date(fetchedAt).toLocaleTimeString()}`
                   : ""
@@ -147,6 +219,12 @@ export default function PitDashboardPage() {
       {liveError && (
         <p className="badge-error rounded-md px-3 py-2 text-sm normal-case tracking-normal">
           {liveError}
+        </p>
+      )}
+
+      {queueError && (
+        <p className="badge-warning rounded-md px-3 py-2 text-sm normal-case tracking-normal">
+          {queueError} Falling back to the TBA schedule.
         </p>
       )}
 
@@ -164,8 +242,14 @@ export default function PitDashboardPage() {
             lastPlayed={lastPlayed}
             ourNext={ourNext}
             hasSchedule={matches.length > 0}
+            queue={queue}
           />
-          <QueueingCard ourNext={ourNext} msToQueue={msToQueue} alert={queueAlert} />
+          <QueueingCard upNext={upNext} alert={queueAlert} />
+          {queue && (
+            <div className="md:col-span-2">
+              <QueueBoardCard queue={queue} myTeam={profile?.teamId ?? ""} />
+            </div>
+          )}
           <div className="md:col-span-2">
             <OpenTalkieCard teamId={dataTeamId ?? ""} />
           </div>
@@ -183,11 +267,13 @@ function CurrentMatchCard({
   lastPlayed,
   ourNext,
   hasSchedule,
+  queue,
 }: {
   onField: EventMatch | null;
   lastPlayed: EventMatch | null;
   ourNext: EventMatch | null;
   hasSchedule: boolean;
+  queue: QueueStatus | null;
 }) {
   return (
     <section className="surface-card flex flex-col gap-3 p-5">
@@ -195,8 +281,19 @@ function CurrentMatchCard({
       {hasSchedule ? (
         <>
           <p className="stat text-5xl font-bold text-graphite-900">
-            {onField ? matchLabel(onField) : "Done"}
+            {/* Nexus knows which match the field is actually running; TBA only
+                knows which one hasn't been scored yet. */}
+            {queue?.onField?.label ??
+              (onField ? matchLabel(onField) : "Done")}
           </p>
+          {queue?.nowQueuing && (
+            <p className="text-sm text-graphite-600">
+              Now queuing:{" "}
+              <span className="stat font-semibold text-maroon-700 dark:text-maroon-300">
+                {queue.nowQueuing}
+              </span>
+            </p>
+          )}
           <div className="flex flex-col gap-1 text-sm text-graphite-600">
             <span>
               Last played:{" "}
@@ -231,15 +328,16 @@ function CurrentMatchCard({
   );
 }
 
-function QueueingCard({
-  ourNext,
-  msToQueue,
-  alert,
-}: {
-  ourNext: EventMatch | null;
+/** Our upcoming match, from Nexus when the event runs it and TBA otherwise. */
+interface UpNext {
+  label: string;
   msToQueue: number | null;
-  alert: boolean;
-}) {
+  /** Nexus queueing status; null when this came from the TBA schedule. */
+  status: NexusMatchStatus | null;
+  live: boolean;
+}
+
+function QueueingCard({ upNext, alert }: { upNext: UpNext | null; alert: boolean }) {
   return (
     <section
       className={`flex flex-col items-center justify-center gap-2 rounded-lg border-2 p-5 text-center transition ${
@@ -251,25 +349,120 @@ function QueueingCard({
       <h2 className="text-xs font-semibold uppercase tracking-widest opacity-70">
         Queuing
       </h2>
-      {ourNext === null ? (
+      {upNext === null ? (
         <p className="py-3 text-sm text-graphite-500">
           No upcoming match — nothing to queue for.
         </p>
-      ) : msToQueue === null ? (
-        <p className="py-3 text-sm text-graphite-500">
-          {matchLabel(ourNext)} has no scheduled time from TBA yet.
-        </p>
       ) : (
         <>
-          <p className="stat text-5xl font-bold">
-            {formatCountdown(msToQueue)}
-          </p>
+          {/* Once Nexus is calling the match, its status IS the headline —
+              a countdown to a moment that already arrived reads as noise. */}
+          {upNext.status !== null && upNext.status !== "Queuing soon" ? (
+            <p className="text-3xl font-bold uppercase tracking-tight">
+              {upNext.status}
+            </p>
+          ) : upNext.msToQueue === null ? (
+            <p className="py-3 text-sm text-graphite-500">
+              {upNext.label} has no {upNext.live ? "queue" : "scheduled"} time
+              yet.
+            </p>
+          ) : (
+            <p className="stat text-5xl font-bold">
+              {formatCountdown(upNext.msToQueue)}
+            </p>
+          )}
           <p className="text-sm font-medium">
             {alert
-              ? `QUEUE NOW for ${matchLabel(ourNext)}!`
-              : `until ${matchLabel(ourNext)} — head to queue 5 min out.`}
+              ? `QUEUE NOW for ${upNext.label}!`
+              : `until ${upNext.label} — head to queue 5 min out.`}
           </p>
+          {upNext.live && (
+            <p className="text-xs opacity-70">Live queueing from Nexus</p>
+          )}
         </>
+      )}
+    </section>
+  );
+}
+
+const QUEUE_STATUS_STYLES: Record<NexusMatchStatus, string> = {
+  "Queuing soon": "bg-graphite-100 text-graphite-600",
+  "Now queuing": "bg-amber-100 text-amber-900 dark:text-amber-200",
+  "On deck": "bg-maroon-50 text-maroon-700 dark:text-maroon-300",
+  "On field": "bg-green-100 text-green-500 dark:text-green-400",
+};
+
+function queueTimeLabel(match: QueueMatch): string {
+  const at = match.queueTime ?? match.startTime;
+  if (at === null) return "—";
+  return new Date(at).toLocaleTimeString(undefined, {
+    hour: "numeric",
+    minute: "2-digit",
+  });
+}
+
+/**
+ * The next few matches with the queuer's live status on each — the pit-side
+ * view of the same board the field crew is working from.
+ */
+function QueueBoardCard({
+  queue,
+  myTeam,
+}: {
+  queue: QueueStatus;
+  myTeam: string;
+}) {
+  return (
+    <section className="surface-card flex flex-col gap-3 p-5">
+      <div className="flex items-center justify-between gap-3">
+        <h2 className="section-title">Up next — live from Nexus</h2>
+        <a
+          href="https://frc.nexus"
+          target="_blank"
+          rel="noreferrer"
+          className="text-xs font-medium text-maroon-700 transition hover:text-maroon-800 dark:text-maroon-300"
+        >
+          frc.nexus ↗
+        </a>
+      </div>
+
+      {queue.upcoming.length === 0 ? (
+        <p className="rounded-lg border border-dashed border-graphite-300 px-4 py-6 text-center text-sm text-graphite-400">
+          Nothing queued right now.
+        </p>
+      ) : (
+        <ul className="divide-y divide-graphite-100">
+          {queue.upcoming.map((match) => {
+            const ours =
+              myTeam !== "" &&
+              (match.redTeams.includes(myTeam) ||
+                match.blueTeams.includes(myTeam));
+            return (
+              <li key={match.label} className="flex items-center gap-3 py-2.5">
+                <span
+                  className={`stat shrink-0 text-sm font-semibold ${
+                    ours
+                      ? "text-maroon-700 dark:text-maroon-300"
+                      : "text-graphite-800"
+                  }`}
+                >
+                  {match.label}
+                </span>
+                <span className="stat min-w-0 flex-1 truncate text-xs text-graphite-500">
+                  {match.redTeams.join(" ")} vs {match.blueTeams.join(" ")}
+                </span>
+                <span className="stat shrink-0 text-xs text-graphite-500">
+                  {queueTimeLabel(match)}
+                </span>
+                <span
+                  className={`shrink-0 rounded px-2 py-1 text-xs font-semibold ${QUEUE_STATUS_STYLES[match.status]}`}
+                >
+                  {match.status}
+                </span>
+              </li>
+            );
+          })}
+        </ul>
       )}
     </section>
   );

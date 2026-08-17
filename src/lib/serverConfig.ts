@@ -8,6 +8,11 @@ export interface ServerConfig {
   /** The Blue Alliance read key — https://www.thebluealliance.com/account */
   tbaApiKey: string | null;
   /**
+   * FRC Nexus API key — https://frc.nexus/api. Backs the pit map on the Event
+   * tab and live queueing on the Pit Dashboard, neither of which TBA publishes.
+   */
+  nexusApiKey: string | null;
+  /**
    * Base URL of the Cloudflare AI Search worker that backs Manual Q&A
    * (RAG over the official game manual PDF). Not a secret — the worker is
    * public — but kept server-side so the client only talks to our own API.
@@ -34,6 +39,7 @@ const DEFAULT_CF_AI_SEARCH_INSTANCE = "game-manual-2026";
 export function getServerConfig(): ServerConfig {
   return {
     tbaApiKey: process.env.TBA_API_KEY || null,
+    nexusApiKey: process.env.NEXUS_API_KEY || null,
     manualQaRagUrl: process.env.MANUAL_QA_RAG_URL || DEFAULT_MANUAL_QA_RAG_URL,
     cfAccountId: process.env.CF_ACCOUNT_ID || DEFAULT_CF_ACCOUNT_ID,
     cfAiSearchInstance:

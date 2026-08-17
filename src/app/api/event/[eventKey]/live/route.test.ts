@@ -14,6 +14,7 @@ const mockGetServerConfig = vi.mocked(getServerConfig);
 function serverConfig(tbaApiKey: string | null): ServerConfig {
   return {
     tbaApiKey,
+    nexusApiKey: null,
     manualQaRagUrl: "https://rag.test",
     cfAccountId: "test-account",
     cfAiSearchInstance: "test-instance",

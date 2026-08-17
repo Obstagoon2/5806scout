@@ -13,6 +13,7 @@ vi.stubGlobal("fetch", mockFetch);
 
 const CONFIG = {
   tbaApiKey: null,
+  nexusApiKey: null,
   manualQaRagUrl: "https://rag.test",
   cfAccountId: "acct-test",
   cfAiSearchInstance: "game-manual-2026",

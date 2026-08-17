@@ -8,6 +8,8 @@ import {
   type EventSearchResult,
 } from "@/lib/eventData";
 import { ReliabilityWarning } from "@/components/ReliabilityFlags";
+import { NexusPitMap } from "@/components/NexusPitMap";
+import { pitAddressFor, type NexusPitAddresses, type PitMap } from "@/lib/nexus";
 import { db } from "@/lib/firebase/client";
 import { fileToResizedDataUrl, isImageFile } from "@/lib/imageFile";
 import { doc, onSnapshot, setDoc } from "firebase/firestore";
@@ -177,6 +179,7 @@ export default function EventPage() {
             <MapView
               event={event}
               teamId={dataTeamId ?? ""}
+              myTeam={profile?.teamId ?? ""}
               isAdmin={isAdmin}
             />
           )}
@@ -407,6 +410,158 @@ interface PitMapDoc {
   updatedAt: number;
 }
 
+interface PitMapResponse {
+  map?: PitMap | null;
+  addresses?: NexusPitAddresses;
+  fetchedAt?: number;
+  error?: string;
+}
+
+interface PitMapState {
+  /** Which event this state belongs to — see the reset in NexusPitMapCard. */
+  eventKey: string;
+  loading: boolean;
+  response: PitMapResponse | null;
+  error: string | null;
+}
+
+function loadingState(eventKey: string): PitMapState {
+  return { eventKey, loading: true, response: null, error: null };
+}
+
+/**
+ * Pit map straight from FRC Nexus for whichever event is currently synced —
+ * the drawn layout plus the team -> pit-address directory. Events that don't
+ * use Nexus simply have none, which is why the manual upload below stays.
+ */
+function NexusPitMapCard({
+  eventKey,
+  myTeam,
+}: {
+  eventKey: string;
+  myTeam: string;
+}) {
+  // One state object keyed by event: syncing a different event must not leave
+  // the old event's map on screen while the new one loads. Reset during render
+  // rather than in an effect so there's never a frame showing the wrong map.
+  const [state, setState] = useState<PitMapState>(() => loadingState(eventKey));
+  if (state.eventKey !== eventKey) setState(loadingState(eventKey));
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function load() {
+      try {
+        const res = await fetch(
+          `/api/event/${encodeURIComponent(eventKey)}/pit-map`,
+        );
+        const body = (await res.json()) as PitMapResponse;
+        if (cancelled) return;
+        setState({
+          eventKey,
+          loading: false,
+          response: res.ok ? body : null,
+          error: res.ok
+            ? null
+            : (body.error ?? `Could not load the pit map (${res.status}).`),
+        });
+      } catch {
+        if (cancelled) return;
+        setState({
+          eventKey,
+          loading: false,
+          response: null,
+          error: "Could not load the pit map — are you online?",
+        });
+      }
+    }
+
+    void load();
+    return () => {
+      cancelled = true;
+    };
+  }, [eventKey]);
+
+  const { loading, error, response } = state;
+  const map = response?.map ?? null;
+  const addresses = response?.addresses ?? {};
+  const myPit = pitAddressFor(addresses, myTeam);
+  const pitCount = Object.keys(addresses).length;
+
+  return (
+    <div className="surface-card flex flex-col gap-3 p-4">
+      <div className="flex flex-wrap items-start justify-between gap-2">
+        <div>
+          <h2 className="text-sm font-semibold text-graphite-900">
+            Pit map — {eventKey.toUpperCase()}
+          </h2>
+          <p className="mt-1 text-sm text-graphite-500">
+            Live from FRC Nexus, following whichever event is synced above.
+          </p>
+        </div>
+        <a
+          href={`https://frc.nexus/en/event/${encodeURIComponent(eventKey)}`}
+          target="_blank"
+          rel="noreferrer"
+          className="text-xs font-medium text-maroon-600 dark:text-maroon-400 hover:text-maroon-700 dark:hover:text-maroon-300"
+        >
+          Open on Nexus ↗
+        </a>
+      </div>
+
+      {myTeam && (
+        <p className="text-sm text-graphite-600">
+          Team <span className="stat font-semibold">{myTeam}</span> pit:{" "}
+          <span className="stat font-semibold text-maroon-700 dark:text-maroon-300">
+            {myPit ?? "not assigned yet"}
+          </span>
+        </p>
+      )}
+
+      {error && (
+        <p className="badge-error rounded-md px-3 py-2 text-sm normal-case tracking-normal">
+          {error}
+        </p>
+      )}
+
+      {loading && !error && (
+        <p className="rounded-lg border border-dashed border-graphite-300 px-4 py-8 text-center text-sm text-graphite-400">
+          Loading pit map…
+        </p>
+      )}
+
+      {!loading && !error && map && (
+        <>
+          <NexusPitMap map={map} highlightTeam={myTeam || null} />
+          <p className="text-xs text-graphite-400">
+            {pitCount > 0
+              ? `${pitCount} pits assigned. `
+              : "Pit assignments not published yet. "}
+            Map data from{" "}
+            <a
+              href="https://frc.nexus"
+              target="_blank"
+              rel="noreferrer"
+              className="underline"
+            >
+              FRC Nexus
+            </a>
+            .
+          </p>
+        </>
+      )}
+
+      {!loading && !error && !map && (
+        <p className="rounded-lg border border-dashed border-graphite-300 px-4 py-8 text-center text-sm text-graphite-400">
+          {pitCount > 0
+            ? "Nexus has pit assignments for this event but no drawn map."
+            : "Nexus has no pit map for this event — use the uploaded map below."}
+        </p>
+      )}
+    </div>
+  );
+}
+
 /** Upload glyph for the pit-map drop zone; matches the app's inline-SVG icons. */
 function UploadIcon() {
   return (
@@ -428,10 +583,12 @@ function UploadIcon() {
 function MapView({
   event,
   teamId,
+  myTeam,
   isAdmin,
 }: {
   event: EventData;
   teamId: string;
+  myTeam: string;
   isAdmin: boolean;
 }) {
   const [pitMap, setPitMap] = useState<PitMapDoc | null>(null);
@@ -524,12 +681,16 @@ function MapView({
         />
       )}
 
+      <NexusPitMapCard eventKey={event.eventKey} myTeam={myTeam} />
+
       <div className="surface-card flex flex-col gap-3 p-4">
         <div>
-          <h2 className="text-sm font-semibold text-graphite-900">Pit map</h2>
+          <h2 className="text-sm font-semibold text-graphite-900">
+            Pit map (uploaded)
+          </h2>
           <p className="mt-1 text-sm text-graphite-500">
-            Pit layouts aren&apos;t published through any API — event organizers
-            hand them out as an image or PDF.{" "}
+            Fallback for events that don&apos;t publish a map to Nexus —
+            organizers usually hand one out as an image or PDF.{" "}
             {isAdmin
               ? "Drag an image in from your desktop, or paste an image URL."
               : "Your admin can add it here for the whole team."}

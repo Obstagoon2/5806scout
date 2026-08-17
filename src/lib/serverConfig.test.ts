@@ -23,6 +23,7 @@ describe("getServerConfig", () => {
   it("returns null for unset optional keys and the built-in defaults", () => {
     expect(getServerConfig()).toEqual({
       tbaApiKey: null,
+      nexusApiKey: null,
       manualQaRagUrl: DEFAULT_RAG_URL,
       cfAccountId: DEFAULT_CF_ACCOUNT_ID,
       cfAiSearchInstance: DEFAULT_CF_AI_SEARCH_INSTANCE,
