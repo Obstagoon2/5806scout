@@ -11,6 +11,18 @@ export const SCOUT_FORMS_DOC_ID = "scoutForms";
 /** Where custom questions land when they don't target an existing section. */
 export const CUSTOM_SECTION_TITLE = "Team Questions";
 
+/**
+ * Every team-added question id starts with this. Downstream code keys off it
+ * to tell a season field apart from one a team invented — most importantly
+ * drive.ts, which scores custom counters at zero so a team's own tally can't
+ * move the match predictor.
+ */
+export const CUSTOM_FIELD_ID_PREFIX = "custom_";
+
+export function isCustomFieldId(id: string): boolean {
+  return id.startsWith(CUSTOM_FIELD_ID_PREFIX);
+}
+
 export const CUSTOM_FIELD_KINDS = [
   "select",
   "number",
@@ -261,11 +273,43 @@ export function makeCustomFieldId(
       .replace(/[^a-z0-9]+/g, "_")
       .replace(/^_+|_+$/g, "")
       .slice(0, 40) || "question";
-  let id = `custom_${slug}`;
+  let id = `${CUSTOM_FIELD_ID_PREFIX}${slug}`;
   let suffix = 2;
   while (takenIds.has(id)) {
-    id = `custom_${slug}_${suffix}`;
+    id = `${CUSTOM_FIELD_ID_PREFIX}${slug}_${suffix}`;
     suffix += 1;
   }
   return id;
+}
+
+/**
+ * Delete a whole section: its default questions go to removedFieldIds (so the
+ * "Removed questions" drawer can restore them one by one), its team-added
+ * questions are dropped outright, and a team-added heading disappears.
+ */
+export function removeSectionFromCustomization(
+  customization: FormCustomization,
+  title: string,
+  defaults: readonly FormSection[],
+): FormCustomization {
+  const defaultFieldIds =
+    defaults
+      .find((section) => section.title === title)
+      ?.fields.map((field) => field.id) ?? [];
+  const alreadyRemoved = new Set(customization.removedFieldIds);
+  return {
+    // A struck-out question that's now removed shouldn't stay struck, or
+    // restoring it would bring it back invisible.
+    hiddenFieldIds: customization.hiddenFieldIds.filter(
+      (id) => !defaultFieldIds.includes(id),
+    ),
+    removedFieldIds: [
+      ...customization.removedFieldIds,
+      ...defaultFieldIds.filter((id) => !alreadyRemoved.has(id)),
+    ],
+    customFields: customization.customFields.filter(
+      (field) => field.section !== title,
+    ),
+    customSections: customization.customSections.filter((s) => s !== title),
+  };
 }

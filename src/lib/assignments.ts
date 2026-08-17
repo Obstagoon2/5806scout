@@ -4,7 +4,7 @@
 
 import type { EventMatch } from "@/lib/eventData";
 import { isPlayed } from "@/lib/pitDashboard";
-import { shiftPlan, type ShiftGroup } from "@/lib/subteams";
+import { clampMatchesPerScout } from "@/lib/scoutDuty";
 
 export interface PitAssignmentsDoc {
   /** uid → team numbers that scout pit-scouts. */
@@ -23,9 +23,6 @@ export interface MatchSlot {
   teamNumber: number;
   alliance: "red" | "blue";
   uid: string;
-  /** Subteam on shift for this match. Absent on docs generated before subteams. */
-  subteamId?: string;
-  subteamName?: string;
 }
 
 export interface MatchAssignmentsDoc {
@@ -112,35 +109,66 @@ export function assignPitScouts(
 }
 
 /**
- * Cover every team in every match: walk the matches in order and hand each
- * of the 6 alliance slots to the next scout in a shuffled rotation. With 6+
- * scouts each match gets 6 different scouts; with fewer, scouts double up
- * within a match so no team goes unscouted. The rotation carries across
- * matches, keeping total load even.
+ * Cover every team in every match by station. A station is a seat in the
+ * schedule — Red 1, Red 2, … Blue 3 — and one scout holds a single station for
+ * `matchesPerScout` consecutive matches before rotating off and handing it to
+ * the next scout in a shuffled rotation.
+ *
+ * Holding a station (rather than being dealt loose slots) is what makes a
+ * shift worth sitting through: the scout watches the same seat match after
+ * match instead of hopping between robots, and comes off duty on a predictable
+ * boundary. The rotation cursor runs across every block, so with more scouts
+ * than stations everyone takes turns and the total load stays even.
+ *
+ * With fewer than 6 scouts eligible, the rotation wraps inside a block and a
+ * scout holds more than one station at once — the same doubling-up the flat
+ * rotation used to do, and still better than leaving a robot unscouted.
  */
 export function assignMatchScouts(
   matches: readonly EventMatch[],
   scoutUids: readonly string[],
+  matchesPerScout: number,
   rng: () => number = Math.random,
 ): MatchSlot[] {
   if (scoutUids.length === 0) return [];
   const rotation = shuffle(scoutUids, rng);
+  const blockSize = clampMatchesPerScout(matchesPerScout);
   let cursor = 0;
 
+  // Who is holding each station for the block currently being laid out.
+  let block = -1;
+  let byStation: string[] = [];
+
   const slots: MatchSlot[] = [];
-  for (const match of matches) {
+  matches.forEach((match, index) => {
+    const thisBlock = Math.floor(index / blockSize);
+    if (thisBlock !== block) {
+      block = thisBlock;
+      byStation = Array.from({ length: STATIONS_PER_MATCH }, () => {
+        const uid = rotation[cursor % rotation.length];
+        cursor++;
+        return uid;
+      });
+    }
+
+    let station = 0;
     for (const side of allianceSides(match)) {
       for (const teamNumber of side.teams) {
         slots.push({
           ...slotFor(match, teamNumber, side.alliance),
-          uid: rotation[cursor % rotation.length],
+          // A match with an unusual alliance size can run past the six
+          // standard stations; wrap rather than hand out an undefined scout.
+          uid: byStation[station % byStation.length],
         });
-        cursor++;
+        station++;
       }
     }
-  }
+  });
   return slots;
 }
+
+/** Red 1–3 then Blue 1–3 — the seats one scout each holds through a shift. */
+const STATIONS_PER_MATCH = 6;
 
 function allianceSides(
   match: EventMatch,
@@ -165,45 +193,3 @@ function slotFor(
   };
 }
 
-/**
- * Match scouting split into shifts: subteams take turns covering blocks of
- * `matchesPerSitting` matches, so a group works one sitting and then is off
- * until its next turn. Inside a shift the group's own scouts rotate through
- * the 6 alliance slots exactly as they do in `assignMatchScouts`.
- *
- * Each group carries its own rotation cursor across every shift it works, so
- * load stays even over the whole event rather than resetting each sitting.
- * Groups with nobody in them are dropped — handing a shift to an empty group
- * would silently leave those matches unscouted.
- */
-export function assignMatchScoutsByShift(
-  matches: readonly EventMatch[],
-  groups: readonly ShiftGroup[],
-  matchesPerSitting: number,
-  rng: () => number = Math.random,
-): MatchSlot[] {
-  const active = groups.filter((group) => group.uids.length > 0);
-  if (active.length === 0) return [];
-
-  const plan = shiftPlan(matches.length, active.length, matchesPerSitting);
-  const rotations = active.map((group) => shuffle(group.uids, rng));
-  const cursors = active.map(() => 0);
-
-  const slots: MatchSlot[] = [];
-  matches.forEach((match, index) => {
-    const groupIndex = plan[index];
-    const rotation = rotations[groupIndex];
-    for (const side of allianceSides(match)) {
-      for (const teamNumber of side.teams) {
-        slots.push({
-          ...slotFor(match, teamNumber, side.alliance),
-          uid: rotation[cursors[groupIndex] % rotation.length],
-          subteamId: active[groupIndex].id,
-          subteamName: active[groupIndex].name,
-        });
-        cursors[groupIndex]++;
-      }
-    }
-  });
-  return slots;
-}

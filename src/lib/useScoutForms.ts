@@ -20,17 +20,13 @@ interface ScoutForms {
   /** Effective Pit Scout schema (defaults until the config resolves). */
   pitSections: FormSection[];
   /**
-   * Match Scout data dictionary. Always the static REBUILT schema: the Match
-   * Scout page is a bespoke game-specific UI, so per-team customization no
-   * longer applies to it — this is exposed so the Data/Drive/Teams/Picklist
-   * pages keep deriving their columns from one place.
+   * Effective Match Scout schema — the REBUILT data dictionary with this
+   * team's customization applied. The Match Scout page is a bespoke UI, but it
+   * renders off this too (skipping dropped questions, appending added ones),
+   * and Data/Drive/Teams/Picklist derive their columns from it.
    */
   matchSections: FormSection[];
 }
-
-// One stable array instance — downstream pages key useMemo off matchSections,
-// so handing out a fresh copy every render would defeat their caching.
-const STATIC_MATCH_SECTIONS: FormSection[] = [...MATCH_SCOUT_SECTIONS];
 
 /**
  * The team's effective scout-form schemas: the pit defaults with this team's
@@ -54,6 +50,12 @@ export function useScoutForms(): ScoutForms {
     () => applyCustomization(PIT_SCOUT_SECTIONS, config?.pitScout),
     [config],
   );
+  // Memoized because downstream pages key their own useMemo off this array —
+  // a fresh copy every render would defeat their caching.
+  const matchSections = useMemo(
+    () => applyCustomization(MATCH_SCOUT_SECTIONS, config?.matchScout),
+    [config],
+  );
 
-  return { config, pitSections, matchSections: STATIC_MATCH_SECTIONS };
+  return { config, pitSections, matchSections };
 }

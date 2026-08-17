@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
   assignMatchScouts,
-  assignMatchScoutsByShift,
   assignPitScouts,
   completedLast,
   shuffle,
@@ -68,44 +67,6 @@ describe("assignPitScouts", () => {
   });
 });
 
-describe("assignMatchScouts", () => {
-  const matches = [
-    qual(1, [1, 2, 3], [4, 5, 6]),
-    qual(2, [7, 8, 9], [10, 11, 12]),
-  ];
-
-  it("covers all 6 teams of every match", () => {
-    const slots = assignMatchScouts(matches, ["a", "b", "c"], seededRng(5));
-    expect(slots.length).toBe(12);
-    const q1Teams = slots
-      .filter((s) => s.matchNumber === 1)
-      .map((s) => s.teamNumber)
-      .sort((x, y) => x - y);
-    expect(q1Teams).toEqual([1, 2, 3, 4, 5, 6]);
-  });
-
-  it("uses 6 distinct scouts per match when the pool is big enough", () => {
-    const pool = ["a", "b", "c", "d", "e", "f", "g"];
-    const slots = assignMatchScouts(matches, pool, seededRng(9));
-    for (const n of [1, 2]) {
-      const uids = slots.filter((s) => s.matchNumber === n).map((s) => s.uid);
-      expect(new Set(uids).size).toBe(6);
-    }
-  });
-
-  it("keeps total load even across the rotation", () => {
-    const slots = assignMatchScouts(matches, ["a", "b", "c"], seededRng(2));
-    const perScout = new Map<string, number>();
-    for (const s of slots) perScout.set(s.uid, (perScout.get(s.uid) ?? 0) + 1);
-    // 12 slots / 3 scouts → exactly 4 each.
-    expect([...perScout.values()]).toEqual([4, 4, 4]);
-  });
-
-  it("returns empty for an empty scout pool", () => {
-    expect(assignMatchScouts(matches, [])).toEqual([]);
-  });
-});
-
 describe("upcomingSlots", () => {
   it("finds the scout's slots in the next unplayed matches, ordered", () => {
     const played = { ...qual(1, [1, 2, 3], [4, 5, 6]), redScore: 10, blueScore: 5 };
@@ -158,81 +119,86 @@ describe("completedLast", () => {
   });
 });
 
-describe("assignMatchScoutsByShift", () => {
+describe("assignMatchScouts", () => {
   const schedule = Array.from({ length: 8 }, (_, i) =>
     qual(i + 1, [1, 2, 3], [4, 5, 6]),
   );
-  const alpha = { id: "a", name: "Alpha", uids: ["a1", "a2"] };
-  const bravo = { id: "b", name: "Bravo", uids: ["b1", "b2"] };
+  const six = ["a", "b", "c", "d", "e", "f"];
 
-  it("gives each subteam a contiguous block, then hands off", () => {
-    const slots = assignMatchScoutsByShift(schedule, [alpha, bravo], 2, seededRng(4));
-    const groupOf = (n: number) =>
-      slots.find((s) => s.matchNumber === n)?.subteamName;
-
-    expect([1, 2, 3, 4, 5, 6, 7, 8].map(groupOf)).toEqual([
-      "Alpha",
-      "Alpha",
-      "Bravo",
-      "Bravo",
-      "Alpha",
-      "Alpha",
-      "Bravo",
-      "Bravo",
-    ]);
+  it("covers all 6 teams of every match", () => {
+    const slots = assignMatchScouts(schedule, ["a", "b", "c"], 4, seededRng(5));
+    expect(slots.length).toBe(48);
+    const q1 = slots
+      .filter((s) => s.matchNumber === 1)
+      .map((s) => s.teamNumber)
+      .sort((x, y) => x - y);
+    expect(q1).toEqual([1, 2, 3, 4, 5, 6]);
   });
 
-  it("never assigns a scout outside their subteam's shift", () => {
-    const slots = assignMatchScoutsByShift(schedule, [alpha, bravo], 2, seededRng(7));
-    for (const slot of slots) {
-      const uids = slot.subteamId === "a" ? alpha.uids : bravo.uids;
-      expect(uids).toContain(slot.uid);
+  it("keeps one scout on one station for the whole block, then hands off", () => {
+    const pool = [...six, "g", "h", "i", "j", "k", "l"];
+    const slots = assignMatchScouts(schedule, pool, 4, seededRng(9));
+    // Team 1 always sits in the same station, so matches 1–4 are one scout's
+    // shift and 5–8 are the next scout's.
+    const onTeam1 = [1, 2, 3, 4, 5, 6, 7, 8].map(
+      (n) => slots.find((s) => s.matchNumber === n && s.teamNumber === 1)!.uid,
+    );
+    expect(new Set(onTeam1.slice(0, 4)).size).toBe(1);
+    expect(new Set(onTeam1.slice(4)).size).toBe(1);
+    expect(onTeam1[0]).not.toBe(onTeam1[4]);
+  });
+
+  it("works a crew of exactly six straight through — there's nobody to rotate in", () => {
+    // Six scouts for six stations means every scout is needed every match, so
+    // the block size can't buy anyone a break. The Team tab warns about this.
+    const slots = assignMatchScouts(schedule, six, 4, seededRng(9));
+    const perScout = new Map<string, number>();
+    for (const s of slots) perScout.set(s.uid, (perScout.get(s.uid) ?? 0) + 1);
+    expect([...perScout.values()]).toEqual(Array(6).fill(8));
+  });
+
+  it("uses 6 distinct scouts per match when the pool is big enough", () => {
+    const slots = assignMatchScouts(schedule, six, 4, seededRng(9));
+    for (const n of [1, 5, 8]) {
+      const uids = slots.filter((s) => s.matchNumber === n).map((s) => s.uid);
+      expect(new Set(uids).size).toBe(6);
     }
   });
 
-  it("still covers all 6 teams of every match", () => {
-    const slots = assignMatchScoutsByShift(schedule, [alpha, bravo], 3, seededRng(11));
-    expect(slots.length).toBe(48);
-    const q5 = slots
-      .filter((s) => s.matchNumber === 5)
-      .map((s) => s.teamNumber)
-      .sort((x, y) => x - y);
-    expect(q5).toEqual([1, 2, 3, 4, 5, 6]);
-  });
-
-  it("keeps load even inside a subteam across all of its shifts", () => {
-    const slots = assignMatchScoutsByShift(schedule, [alpha, bravo], 2, seededRng(3));
+  it("rotates every scout through when there are more scouts than stations", () => {
+    const pool = [...six, "g", "h", "i", "j", "k", "l"];
+    const slots = assignMatchScouts(schedule, pool, 4, seededRng(3));
+    // Two blocks × 6 stations = 12 shifts, one for each of the 12 scouts.
+    expect(new Set(slots.map((s) => s.uid)).size).toBe(12);
     const perScout = new Map<string, number>();
     for (const s of slots) perScout.set(s.uid, (perScout.get(s.uid) ?? 0) + 1);
-    // 8 matches × 6 slots = 48, split evenly between 2 groups of 2 scouts.
-    expect([...perScout.values()].sort()).toEqual([12, 12, 12, 12]);
+    expect([...perScout.values()]).toEqual(Array(12).fill(4));
   });
 
-  it("skips subteams with nobody in them rather than dropping their matches", () => {
-    const empty = { id: "c", name: "Charlie", uids: [] };
-    const slots = assignMatchScoutsByShift(
-      schedule,
-      [alpha, empty, bravo],
-      2,
-      seededRng(5),
-    );
-
+  it("doubles a scout onto extra stations rather than leaving a robot unscouted", () => {
+    const slots = assignMatchScouts(schedule, ["a", "b"], 8, seededRng(2));
     expect(slots.length).toBe(48);
-    expect(new Set(slots.map((s) => s.subteamName))).toEqual(
-      new Set(["Alpha", "Bravo"]),
-    );
+    // Every match still has all 6 teams covered by somebody.
+    for (const n of [1, 8]) {
+      expect(slots.filter((s) => s.matchNumber === n).length).toBe(6);
+    }
+    expect(new Set(slots.map((s) => s.uid))).toEqual(new Set(["a", "b"]));
   });
 
-  it("gives a single subteam the whole schedule", () => {
-    const slots = assignMatchScoutsByShift(schedule, [alpha], 3, seededRng(6));
-    expect(new Set(slots.map((s) => s.subteamId))).toEqual(new Set(["a"]));
-    expect(slots.length).toBe(48);
+  it("treats the whole schedule as one shift when the block is long enough", () => {
+    const slots = assignMatchScouts(schedule, six, 200, seededRng(6));
+    const onTeam1 = slots
+      .filter((s) => s.teamNumber === 1)
+      .map((s) => s.uid);
+    expect(new Set(onTeam1).size).toBe(1);
   });
 
-  it("returns nothing when no subteam has members", () => {
-    expect(
-      assignMatchScoutsByShift(schedule, [{ id: "c", name: "C", uids: [] }], 2),
-    ).toEqual([]);
-    expect(assignMatchScoutsByShift(schedule, [], 2)).toEqual([]);
+  it("clamps a nonsense block size instead of dropping matches", () => {
+    expect(assignMatchScouts(schedule, six, 0, seededRng(1)).length).toBe(48);
+    expect(assignMatchScouts(schedule, six, NaN, seededRng(1)).length).toBe(48);
+  });
+
+  it("returns empty for an empty scout pool", () => {
+    expect(assignMatchScouts(schedule, [], 4)).toEqual([]);
   });
 });

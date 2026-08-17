@@ -4,13 +4,18 @@ import type { EventMatch, EventTeam } from "@/lib/eventData";
 import type { FormSection } from "@/lib/formSchema";
 import {
   buildTeamProfiles,
+  counterWeight,
   eventFieldAverages,
+  missingPredictionFields,
+  pastTeamMatches,
   predictAlliance,
   predictMatch,
   redWinProbability,
+  reviewMatch,
   scoutedPoints,
   upcomingTeamMatches,
 } from "@/lib/drive";
+import { MATCH_SCOUT_SECTIONS } from "@/lib/matchScoutSchema";
 
 const SECTIONS: FormSection[] = [
   {
@@ -201,5 +206,133 @@ describe("upcomingTeamMatches", () => {
       "qm2",
       "qm4",
     ]);
+  });
+});
+
+describe("counterWeight", () => {
+  it("uses the season weight, falling back to 1 point per unit", () => {
+    expect(counterWeight("high", { high: 5 })).toBe(5);
+    expect(counterWeight("low", { high: 5 })).toBe(1);
+    expect(counterWeight("teleopFuelFed", { teleopFuelFed: 0 })).toBe(0);
+  });
+
+  it("scores team-added counters at zero", () => {
+    // A team tallying something of their own must not move the predictor,
+    // which DEFAULT_WEIGHT would otherwise do.
+    expect(counterWeight("custom_cycles", {})).toBe(0);
+    expect(counterWeight("custom_cycles", { custom_cycles: 3 })).toBe(0);
+  });
+});
+
+describe("scoutedPoints with team-added counters", () => {
+  it("leaves a custom counter out of the points total", () => {
+    const sections: FormSection[] = [
+      {
+        title: "Teleop",
+        fields: [
+          { kind: "counter", id: "low", label: "Scored — low" },
+          { kind: "counter", id: "custom_cycles", label: "Cycles" },
+        ],
+      },
+    ];
+    const agg: TeamAggregate = {
+      team: "100",
+      matches: 4,
+      averages: { low: 3, custom_cycles: 9 },
+      modes: {},
+    };
+    expect(scoutedPoints(sections, agg, {})).toBe(3);
+  });
+});
+
+describe("missingPredictionFields", () => {
+  it("is empty when the form still asks every predictor input", () => {
+    expect(missingPredictionFields(MATCH_SCOUT_SECTIONS)).toEqual([]);
+  });
+
+  it("names the inputs a customized form dropped", () => {
+    const trimmed = MATCH_SCOUT_SECTIONS.map((section) => ({
+      ...section,
+      fields: section.fields.filter(
+        (field) => field.id !== "teleopScoredFuel" && field.id !== "endgame",
+      ),
+    }));
+    expect(missingPredictionFields(trimmed).sort()).toEqual([
+      "endgame",
+      "teleopScoredFuel",
+    ]);
+  });
+
+  it("ignores fields the predictor scores at zero", () => {
+    // teleopFuelFed and the 0–5 ratings weigh nothing, so losing them costs
+    // the predictor nothing either.
+    const trimmed = MATCH_SCOUT_SECTIONS.map((section) => ({
+      ...section,
+      fields: section.fields.filter(
+        (field) => field.id !== "teleopFuelFed" && field.id !== "driverSkill",
+      ),
+    }));
+    expect(missingPredictionFields(trimmed)).toEqual([]);
+  });
+});
+
+describe("pastTeamMatches", () => {
+  const played = [
+    match({ key: "qm1", matchNumber: 1, redScore: 50, blueScore: 40, winner: "red" }),
+    match({ key: "qm2", matchNumber: 2, red: [7, 8, 9], redScore: 10, blueScore: 20, winner: "blue" }),
+    match({ key: "qm3", matchNumber: 3, redScore: 30, blueScore: 30, winner: "tie" }),
+    match({ key: "qm4", matchNumber: 4 }),
+  ];
+
+  it("returns only the team's finished matches, most recent first", () => {
+    expect(pastTeamMatches(played, 1).map((m) => m.key)).toEqual(["qm3", "qm1"]);
+  });
+
+  it("matches on either alliance", () => {
+    expect(pastTeamMatches(played, 5).map((m) => m.key)).toEqual([
+      "qm3",
+      "qm2",
+      "qm1",
+    ]);
+  });
+});
+
+describe("reviewMatch", () => {
+  const profiles = buildTeamProfiles(
+    SECTIONS,
+    [aggregate("1", { high: 10 }), aggregate("4", { high: 1 })],
+    {},
+    [eventTeam(2, 5), eventTeam(3, 5), eventTeam(5, 5), eventTeam(6, 5)],
+  );
+
+  it("marks a prediction that matched the result as called", () => {
+    const review = reviewMatch(
+      match({ redScore: 60, blueScore: 20, winner: "red" }),
+      profiles,
+    );
+    expect(review.prediction.redWinProbability).toBeGreaterThan(0.5);
+    expect(review.called).toBe(true);
+    expect(review.winner).toBe("red");
+  });
+
+  it("marks a prediction that went the other way as missed", () => {
+    const review = reviewMatch(
+      match({ redScore: 10, blueScore: 60, winner: "blue" }),
+      profiles,
+    );
+    expect(review.called).toBe(false);
+  });
+
+  it("scores neither a hit nor a miss on a tie", () => {
+    expect(reviewMatch(match({ winner: "tie" }), profiles).called).toBeNull();
+  });
+
+  it("scores nothing when an alliance has no data at all", () => {
+    const review = reviewMatch(
+      match({ red: [900, 901, 902], winner: "red" }),
+      new Map(),
+    );
+    expect(review.prediction.redWinProbability).toBeNull();
+    expect(review.called).toBeNull();
   });
 });

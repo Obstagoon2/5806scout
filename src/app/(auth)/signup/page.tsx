@@ -171,8 +171,9 @@ export default function SignupPage() {
           {asAdmin ? "Create an admin account" : "Create a scout account"}
         </h1>
         <p className="mt-1 text-sm text-graphite-500">
-          Scouts sign up with just the form below. Each team has a single admin
-          slot — the first admin to sign up claims it.
+          Scouts sign up with just the form below. The first admin to sign up
+          claims the team; after that, any admin can promote teammates from the
+          Team tab.
         </p>
 
         <form onSubmit={handleSubmit} className="mt-6 flex flex-col gap-4">

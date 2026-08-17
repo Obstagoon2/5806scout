@@ -27,7 +27,7 @@ export function SchemaForm({ sections, values, onChange }: SchemaFormProps) {
             </p>
           )}
           {section.fields.map((field) => (
-            <Field
+            <SchemaField
               key={field.id}
               field={field}
               value={values[field.id]}
@@ -42,7 +42,9 @@ export function SchemaForm({ sections, values, onChange }: SchemaFormProps) {
 
 const inputClass = "field-input";
 
-function Field({
+// Exported so the bespoke Match Scout screen can render the questions a team
+// added from Form Setup with the same controls as the schema-driven forms.
+export function SchemaField({
   field,
   value,
   onChange,

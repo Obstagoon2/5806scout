@@ -12,6 +12,10 @@ import type { FormSection } from "@/lib/formSchema";
 // pages all derive their columns and labels from what's listed here. Keep
 // the ids in sync with match-scout/page.tsx and the weights in drive.ts.
 //
+// Teams may strike, delete, or add questions on top of this from Form Setup
+// (see customForms.ts); the bespoke page skips the blocks whose field the
+// team dropped and renders team-added questions generically.
+//
 // Naming constraints downstream code relies on:
 // - Picklist sums counters whose ids start with "autoScored" / "teleopScored".
 // - Data + Picklist show the mode of the select with id "endgame".
@@ -146,3 +150,11 @@ export const MATCH_SCOUT_SECTIONS: readonly FormSection[] = [
     ],
   },
 ];
+
+/** Season field id → its label, for warnings that name a dropped question. */
+export const MATCH_FIELD_LABELS: Readonly<Record<string, string>> =
+  Object.fromEntries(
+    MATCH_SCOUT_SECTIONS.flatMap((section) =>
+      section.fields.map((field) => [field.id, field.label] as const),
+    ),
+  );

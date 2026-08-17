@@ -5,6 +5,7 @@
 
 import type { TeamAggregate } from "@/lib/aggregate";
 import { counterFieldIds } from "@/lib/aggregate";
+import { isCustomFieldId } from "@/lib/customForms";
 import type { EventMatch, EventTeam } from "@/lib/eventData";
 import type { FormSection } from "@/lib/formSchema";
 
@@ -44,6 +45,46 @@ export const SELECT_MODE_POINTS: Record<string, Record<string, number>> = {
   autoClimb: { "Climbed (L1)": 15 },
   endgame: { "Level 1": 10, "Level 2": 20, "Level 3": 30 },
 };
+
+/**
+ * What one unit of a counter is worth to the predictor. Team-added counters
+ * score nothing: an admin who adds "cycles counted" from Form Setup is
+ * tracking something for themselves, not redefining the season's scoring, and
+ * DEFAULT_WEIGHT would otherwise fold it straight into predicted points.
+ */
+export function counterWeight(
+  fieldId: string,
+  weights: ScoringWeights,
+): number {
+  if (isCustomFieldId(fieldId)) return 0;
+  return weights[fieldId] ?? DEFAULT_WEIGHT;
+}
+
+/**
+ * Match Scout fields the predictor reads. Nothing errors when one goes
+ * missing — the points it contributed just silently vanish from every
+ * prediction — so Form Setup warns before saving an edit that drops one, and
+ * the Drive Dash flags the gap (see missingPredictionFields).
+ */
+export const PREDICTION_FIELD_IDS: readonly string[] = [
+  ...Object.entries(SCORING_WEIGHTS)
+    .filter(([, points]) => points !== 0)
+    .map(([fieldId]) => fieldId),
+  ...Object.keys(SELECT_MODE_POINTS),
+];
+
+/**
+ * Which predictor inputs this team's effective Match Scout form no longer
+ * collects. Empty means predictions are running on complete data.
+ */
+export function missingPredictionFields(
+  sections: readonly FormSection[],
+): string[] {
+  const present = new Set(
+    sections.flatMap((section) => section.fields.map((field) => field.id)),
+  );
+  return PREDICTION_FIELD_IDS.filter((fieldId) => !present.has(fieldId));
+}
 
 /** A counter where a team clearly stands out from the event field. */
 export interface FieldEdge {
@@ -102,8 +143,7 @@ export function scoutedPoints(
   weights: ScoringWeights,
 ): number {
   const counterPoints = counterFieldIds(sections).reduce(
-    (sum, id) =>
-      sum + (aggregate.averages[id] ?? 0) * (weights[id] ?? DEFAULT_WEIGHT),
+    (sum, id) => sum + (aggregate.averages[id] ?? 0) * counterWeight(id, weights),
     0,
   );
   const climbPoints = Object.entries(SELECT_MODE_POINTS).reduce(
@@ -235,7 +275,7 @@ export function predictMatch(
   };
 }
 
-/** All of our team's unplayed matches, in schedule order. */
+/** All of a team's unplayed matches, in schedule order. */
 export function upcomingTeamMatches(
   matches: readonly EventMatch[],
   teamNumber: number,
@@ -246,4 +286,46 @@ export function upcomingTeamMatches(
       m.blueScore === null &&
       (m.red.includes(teamNumber) || m.blue.includes(teamNumber)),
   );
+}
+
+/** A team's already-played matches, most recent first. */
+export function pastTeamMatches(
+  matches: readonly EventMatch[],
+  teamNumber: number,
+): EventMatch[] {
+  return matches
+    .filter(
+      (m) =>
+        (m.redScore !== null || m.blueScore !== null) &&
+        (m.red.includes(teamNumber) || m.blue.includes(teamNumber)),
+    )
+    .reverse();
+}
+
+/**
+ * How a played match turned out against what the predictor said. `called` is
+ * null when the predictor had no opinion (an alliance with no data) or the
+ * match was a tie — neither is a hit or a miss.
+ */
+export interface MatchReview {
+  prediction: MatchPrediction;
+  /** Who actually won, straight from the event feed. */
+  winner: "red" | "blue" | "tie" | null;
+  called: boolean | null;
+}
+
+export function reviewMatch(
+  match: EventMatch,
+  profiles: ReadonlyMap<number, TeamStrengthProfile>,
+): MatchReview {
+  const prediction = predictMatch(match, profiles);
+  const probability = prediction.redWinProbability;
+  let called: boolean | null = null;
+  if (
+    probability !== null &&
+    (match.winner === "red" || match.winner === "blue")
+  ) {
+    called = (probability >= 0.5 ? "red" : "blue") === match.winner;
+  }
+  return { prediction, winner: match.winner, called };
 }

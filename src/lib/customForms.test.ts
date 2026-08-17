@@ -4,6 +4,7 @@ import {
   CUSTOM_SECTION_TITLE,
   emptyCustomization,
   makeCustomFieldId,
+  removeSectionFromCustomization,
   sanitizeScoutFormsConfig,
   type CustomField,
 } from "./customForms";
@@ -299,5 +300,71 @@ describe("makeCustomFieldId", () => {
     expect(makeCustomFieldId("!!!", new Set())).toBe("custom_question");
     const taken = new Set(["custom_q", "custom_q_2"]);
     expect(makeCustomFieldId("Q", taken)).toBe("custom_q_3");
+  });
+});
+
+describe("removeSectionFromCustomization", () => {
+  it("removes a default section's questions and clears their strikes", () => {
+    const result = removeSectionFromCustomization(
+      {
+        hiddenFieldIds: ["autoMobility"],
+        removedFieldIds: [],
+        customFields: [],
+        customSections: [],
+      },
+      "Autonomous",
+      DEFAULTS,
+    );
+    expect(result.removedFieldIds).toEqual(["autoMobility", "autoScoredLow"]);
+    // The strike is dropped along with the question, so restoring it later
+    // brings it back visible rather than struck out.
+    expect(result.hiddenFieldIds).toEqual([]);
+    expect(applyCustomization(DEFAULTS, result)).toEqual([
+      {
+        title: "Endgame",
+        fields: [
+          { kind: "select", id: "endgame", label: "Endgame", options: ["None", "Park"] },
+        ],
+      },
+    ]);
+  });
+
+  it("deletes a team section's own questions along with the heading", () => {
+    const result = removeSectionFromCustomization(
+      {
+        hiddenFieldIds: [],
+        removedFieldIds: [],
+        customFields: [
+          custom({ id: "custom_a", section: "Defense" }),
+          custom({ id: "custom_b", section: CUSTOM_SECTION_TITLE }),
+        ],
+        customSections: ["Defense", "Strategy"],
+      },
+      "Defense",
+      DEFAULTS,
+    );
+    expect(result.customSections).toEqual(["Strategy"]);
+    expect(result.customFields.map((f) => f.id)).toEqual(["custom_b"]);
+  });
+
+  it("doesn't double-list a question that was already removed", () => {
+    const result = removeSectionFromCustomization(
+      {
+        hiddenFieldIds: [],
+        removedFieldIds: ["autoScoredLow"],
+        customFields: [],
+        customSections: [],
+      },
+      "Autonomous",
+      DEFAULTS,
+    );
+    expect(result.removedFieldIds).toEqual(["autoScoredLow", "autoMobility"]);
+  });
+
+  it("is a no-op for a section neither form has", () => {
+    const before = emptyCustomization();
+    expect(removeSectionFromCustomization(before, "Nope", DEFAULTS)).toEqual(
+      before,
+    );
   });
 });

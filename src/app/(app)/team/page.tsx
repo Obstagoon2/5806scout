@@ -3,25 +3,24 @@
 import { useAuth } from "@/lib/auth/AuthProvider";
 import {
   assignMatchScouts,
-  assignMatchScoutsByShift,
   assignPitScouts,
   type MatchAssignmentsDoc,
   type PitAssignmentsDoc,
 } from "@/lib/assignments";
 import {
-  clampMatchesPerSitting,
+  clampMatchesPerScout,
   DUTY_LABELS,
+  dutyFor,
   eligibleUids,
-  emptySubteamsDoc,
-  MAX_MATCHES_PER_SITTING,
-  membersBySubteam,
-  MIN_MATCHES_PER_SITTING,
-  resolveMemberships,
-  shiftGroupsFor,
-  type Subteam,
-  type SubteamDuty,
-  type SubteamsDoc,
-} from "@/lib/subteams";
+  emptyScoutDutiesDoc,
+  MAX_MATCHES_PER_SCOUT,
+  MIN_MATCHES_PER_SCOUT,
+  sanitizeScoutDutiesDoc,
+  SCOUT_DUTIES,
+  SCOUT_DUTIES_DOC_ID,
+  type ScoutDutiesDoc,
+  type ScoutDuty,
+} from "@/lib/scoutDuty";
 import type { EventData } from "@/lib/eventData";
 import { db } from "@/lib/firebase/client";
 import {
@@ -69,14 +68,14 @@ async function writeMatchAssignments(
   } satisfies MatchAssignmentsDoc);
 }
 
-async function writeSubteams(
+async function writeScoutDuties(
   teamId: string,
-  next: Omit<SubteamsDoc, "updatedAt">,
+  next: Omit<ScoutDutiesDoc, "updatedAt">,
 ): Promise<void> {
-  await setDoc(doc(db, "teams", teamId, "config", "subteams"), {
+  await setDoc(doc(db, "teams", teamId, "config", SCOUT_DUTIES_DOC_ID), {
     ...next,
     updatedAt: Date.now(),
-  } satisfies SubteamsDoc);
+  } satisfies ScoutDutiesDoc);
 }
 
 export default function TeamPage() {
@@ -96,8 +95,8 @@ export default function TeamPage() {
   const [codeInput, setCodeInput] = useState("");
   const [linkBusy, setLinkBusy] = useState(false);
   const [linkMessage, setLinkMessage] = useState<string | null>(null);
-  const [subteamsDoc, setSubteamsDoc] = useState<SubteamsDoc>(emptySubteamsDoc);
-  const [newSubteamName, setNewSubteamName] = useState("");
+  const [dutiesDoc, setDutiesDoc] =
+    useState<ScoutDutiesDoc>(emptyScoutDutiesDoc);
 
   // Roster pools both teams when a sister team is linked, so assignments
   // split the work across every active scout in the pair.
@@ -153,15 +152,12 @@ export default function TeamPage() {
       doc(db, "teams", dataTeamId, "config", "matchAssignments"),
       (s) => setHasMatchAssignments(s.exists()),
     );
-    const unsubSubteams = onSnapshot(
-      doc(db, "teams", dataTeamId, "config", "subteams"),
-      (s) =>
-        setSubteamsDoc(
-          s.exists() ? (s.data() as SubteamsDoc) : emptySubteamsDoc(),
-        ),
+    const unsubDuties = onSnapshot(
+      doc(db, "teams", dataTeamId, "config", SCOUT_DUTIES_DOC_ID),
+      (s) => setDutiesDoc(sanitizeScoutDutiesDoc(s.data())),
     );
     return () => {
-      unsubSubteams();
+      unsubDuties();
       unsubEvent();
       unsubPit();
       unsubMatch();
@@ -172,80 +168,34 @@ export default function TeamPage() {
   const activeScouts = roster.filter((m) => m.role === "scout" && m.active);
   const activeScoutUids = activeScouts.map((m) => m.uid);
 
-  // Subteams are opt-in: with none defined, assignment behaves exactly as it
-  // did before — every active scout in one pool.
-  const usingSubteams = subteamsDoc.subteams.length > 0;
-  const memberships = resolveMemberships(
-    subteamsDoc.subteams,
-    subteamsDoc.memberships,
-    activeScoutUids,
-  );
-  const matchGroups = shiftGroupsFor(
-    "match",
-    subteamsDoc.subteams,
-    memberships,
-    activeScoutUids,
-  );
-  const matchScoutUids = usingSubteams
-    ? matchGroups.flatMap((group) => group.uids)
-    : activeScoutUids;
-  const pitScoutUids = usingSubteams
-    ? eligibleUids("pit", subteamsDoc.subteams, memberships, activeScoutUids)
-    : activeScoutUids;
+  // Only the three scouting duties reach an assignment run — a Viewer, the
+  // drive team, and the pit crew all have somewhere else to be.
+  const matchScoutUids = eligibleUids("match", dutiesDoc.duties, activeScoutUids);
+  const pitScoutUids = eligibleUids("pit", dutiesDoc.duties, activeScoutUids);
+  const matchesPerScout = clampMatchesPerScout(dutiesDoc.matchesPerScout);
+  // Six stations need six scouts at all times, so a crew of six or fewer works
+  // every match no matter how short the shift is set.
+  const crewTooSmallToRotate =
+    matchScoutUids.length > 0 && matchScoutUids.length <= 6;
 
   function scoutNames(): Record<string, string> {
     return Object.fromEntries(activeScouts.map((m) => [m.uid, m.fullName]));
   }
 
-  async function saveSubteams(next: Omit<SubteamsDoc, "updatedAt">) {
+  async function saveDuties(next: Omit<ScoutDutiesDoc, "updatedAt">) {
     if (!dataTeamId) return;
     setError(null);
     try {
-      await writeSubteams(dataTeamId, next);
+      await writeScoutDuties(dataTeamId, next);
     } catch {
-      setError("Could not save subteams — check your connection.");
+      setError("Could not save scouting duties — check your connection.");
     }
   }
 
-  function addSubteam() {
-    const name = newSubteamName.trim();
-    if (!name) return;
-    setNewSubteamName("");
-    void saveSubteams({
-      ...subteamsDoc,
-      subteams: [
-        ...subteamsDoc.subteams,
-        { id: crypto.randomUUID(), name, duty: "both" },
-      ],
-    });
-  }
-
-  function updateSubteam(id: string, patch: Partial<Subteam>) {
-    void saveSubteams({
-      ...subteamsDoc,
-      subteams: subteamsDoc.subteams.map((group) =>
-        group.id === id ? { ...group, ...patch } : group,
-      ),
-    });
-  }
-
-  function removeSubteam(id: string) {
-    // Drop the memberships too — a uid pointing at a deleted group would
-    // otherwise be silently re-placed on every read.
-    const memberships = Object.fromEntries(
-      Object.entries(subteamsDoc.memberships).filter(([, group]) => group !== id),
-    );
-    void saveSubteams({
-      ...subteamsDoc,
-      subteams: subteamsDoc.subteams.filter((group) => group.id !== id),
-      memberships,
-    });
-  }
-
-  function setMembership(uid: string, subteamId: string) {
-    void saveSubteams({
-      ...subteamsDoc,
-      memberships: { ...subteamsDoc.memberships, [uid]: subteamId },
+  function setDuty(uid: string, duty: ScoutDuty) {
+    void saveDuties({
+      ...dutiesDoc,
+      duties: { ...dutiesDoc.duties, [uid]: duty },
     });
   }
 
@@ -288,20 +238,14 @@ export default function TeamPage() {
     setError(null);
     setAssignSuccess(null);
     try {
-      // With subteams defined, groups take turns covering blocks of matches
-      // (one sitting each); without them, everyone shares one rotation.
-      const slots = usingSubteams
-        ? assignMatchScoutsByShift(
-            event.matches,
-            matchGroups,
-            subteamsDoc.matchesPerSitting,
-          )
-        : assignMatchScouts(event.matches, activeScoutUids);
+      const slots = assignMatchScouts(
+        event.matches,
+        matchScoutUids,
+        matchesPerScout,
+      );
       await writeMatchAssignments(dataTeamId, slots, scoutNames());
       setAssignSuccess(
-        usingSubteams
-          ? `Match scouting: ${event.matches.length} matches split into sittings of ${clampMatchesPerSitting(subteamsDoc.matchesPerSitting)} across ${matchGroups.length} subteam${matchGroups.length === 1 ? "" : "s"} — see the Assignments tab.`
-          : `Match scouting: ${event.matches.length} matches covered by ${activeScoutUids.length} scouts — see the Assignments tab.`,
+        `Match scouting: ${event.matches.length} matches covered by ${matchScoutUids.length} scout${matchScoutUids.length === 1 ? "" : "s"}, ${matchesPerScout} match${matchesPerScout === 1 ? "" : "es"} each before rotating off — see the Assignments tab.`,
       );
     } catch {
       setError("Could not save match assignments — check your connection.");
@@ -418,6 +362,36 @@ export default function TeamPage() {
     }
   }
 
+  /**
+   * Promote a teammate to admin, or hand them back to scout. A team can have
+   * as many admins as it likes; the signup form's single-admin gate only
+   * covers who claims the team first, and every admin after that is made here.
+   *
+   * Admins can't change their own role — that's what keeps a team from
+   * demoting its way out of having any admin at all.
+   */
+  async function toggleRole(member: UserProfile) {
+    if (!profile || member.uid === user?.uid) return;
+    const promoting = member.role !== "admin";
+    if (
+      !window.confirm(
+        promoting
+          ? `Make ${member.fullName} an admin? They'll be able to edit forms, assign scouting, manage the roster, and promote other admins.`
+          : `Return ${member.fullName} to scout? They'll lose access to the admin tabs.`,
+      )
+    ) {
+      return;
+    }
+    setError(null);
+    try {
+      await updateDoc(doc(db, "users", member.uid), {
+        role: promoting ? "admin" : "scout",
+      });
+    } catch {
+      setError("Could not change that member's role — check your connection.");
+    }
+  }
+
   return (
     <main className="mx-auto flex w-full max-w-2xl flex-col gap-6 px-4 py-8 md:px-6">
       <div>
@@ -443,9 +417,7 @@ export default function TeamPage() {
           <p className="text-xs text-graphite-500">
             {!event
               ? "Sync an event on the Event tab first."
-              : usingSubteams
-                ? `Pit: ${event.teams.length} event teams split across ${pitScoutUids.length} pit-eligible scout${pitScoutUids.length === 1 ? "" : "s"}. Match: ${event.matches.length} matches, with ${matchGroups.length} subteam${matchGroups.length === 1 ? "" : "s"} taking turns in sittings of ${clampMatchesPerSitting(subteamsDoc.matchesPerSitting)}. Results appear in the Assignments tab.`
-                : `Randomly split the ${event.teams.length} event teams (pit) or all ${event.matches.length} matches (match) across the ${activeScouts.length} active scout${activeScouts.length === 1 ? "" : "s"}. Results appear in the Assignments tab.`}
+              : `Pit: ${event.teams.length} event teams split across ${pitScoutUids.length} pit scout${pitScoutUids.length === 1 ? "" : "s"}. Match: ${event.matches.length} matches across ${matchScoutUids.length} match scout${matchScoutUids.length === 1 ? "" : "s"}, each holding one station for ${matchesPerScout} match${matchesPerScout === 1 ? "" : "es"} before rotating off. Only the Match and Pit / Pit / Match duties are included. Results appear in the Assignments tab.`}
           </p>
           <div className="flex flex-wrap gap-2">
             <button
@@ -473,22 +445,69 @@ export default function TeamPage() {
               below.
             </p>
           )}
-          {event && activeScouts.length > 0 && usingSubteams && (
+          {event && activeScouts.length > 0 && (
             <>
               {pitScoutUids.length === 0 && (
                 <p className="text-xs text-amber-700">
-                  No subteam is set to pit scouting — set one to Pit or Match +
-                  pit below.
+                  Nobody is set to pit scouting — give someone the Pit or Match
+                  and Pit duty below.
                 </p>
               )}
               {matchScoutUids.length === 0 && (
                 <p className="text-xs text-amber-700">
-                  No subteam is set to match scouting — set one to Match or
-                  Match + pit below.
+                  Nobody is set to match scouting — give someone the Match or
+                  Match and Pit duty below.
+                </p>
+              )}
+              {crewTooSmallToRotate && (
+                <p className="text-xs text-amber-700">
+                  Every match needs 6 scouts at once, so with{" "}
+                  {matchScoutUids.length} match scout
+                  {matchScoutUids.length === 1 ? "" : "s"} nobody rotates off —
+                  they&apos;ll cover the whole schedule
+                  {matchScoutUids.length < 6
+                    ? ", doubling up on stations"
+                    : ""}
+                  . Add a 7th to start giving people breaks.
                 </p>
               )}
             </>
           )}
+        </div>
+      )}
+
+      {isAdmin && (
+        <div className="surface-card flex flex-col gap-3 p-4">
+          <div>
+            <p className="text-sm font-medium text-graphite-900">
+              Match shift length
+            </p>
+            <p className="mt-1 text-xs text-graphite-500">
+              A match scout holds one station — Red 1, Blue 3, and so on — for
+              this many matches in a row, then hands it to the next scout and
+              comes off duty. Shorter shifts rotate more people through; longer
+              ones mean fewer handoffs to miss.
+            </p>
+          </div>
+          <label className="flex flex-wrap items-center gap-2 text-sm text-graphite-700">
+            <span>Matches per scout</span>
+            <input
+              type="number"
+              min={MIN_MATCHES_PER_SCOUT}
+              max={MAX_MATCHES_PER_SCOUT}
+              value={dutiesDoc.matchesPerScout}
+              onChange={(e) =>
+                void saveDuties({
+                  ...dutiesDoc,
+                  matchesPerScout: clampMatchesPerScout(Number(e.target.value)),
+                })
+              }
+              className="field-input stat w-20 py-1.5"
+            />
+            <span className="text-xs text-graphite-500">
+              before they rotate off
+            </span>
+          </label>
         </div>
       )}
 
@@ -498,122 +517,6 @@ export default function TeamPage() {
         </p>
       )}
 
-      {isAdmin && (
-        <div className="surface-card flex flex-col gap-3 p-4">
-          <div>
-            <p className="text-sm font-medium text-graphite-900">Subteams</p>
-            <p className="mt-1 text-xs text-graphite-500">
-              Split the crew into named groups and say what each one scouts.
-              Match-scouting subteams take turns: one group covers a sitting,
-              then hands off to the next. With no subteams, every active scout
-              shares one rotation.
-            </p>
-          </div>
-
-          {subteamsDoc.subteams.length > 0 && (
-            <ul className="flex flex-col gap-2">
-              {subteamsDoc.subteams.map((group) => {
-                const size = (
-                  membersBySubteam(
-                    subteamsDoc.subteams,
-                    memberships,
-                    activeScoutUids,
-                  )[group.id] ?? []
-                ).length;
-                return (
-                  <li
-                    key={group.id}
-                    className="flex flex-wrap items-center gap-2 rounded-md border border-graphite-200 p-2"
-                  >
-                    <input
-                      type="text"
-                      value={group.name}
-                      aria-label="Subteam name"
-                      onChange={(e) =>
-                        updateSubteam(group.id, { name: e.target.value })
-                      }
-                      className="field-input min-w-0 flex-1 py-1.5"
-                    />
-                    <select
-                      value={group.duty}
-                      aria-label={`What ${group.name} scouts`}
-                      onChange={(e) =>
-                        updateSubteam(group.id, {
-                          duty: e.target.value as SubteamDuty,
-                        })
-                      }
-                      className="field-input w-auto py-1.5"
-                    >
-                      {(["match", "pit", "both"] as const).map((duty) => (
-                        <option key={duty} value={duty}>
-                          {DUTY_LABELS[duty]}
-                        </option>
-                      ))}
-                    </select>
-                    <span className="stat shrink-0 text-xs text-graphite-500">
-                      {size} scout{size === 1 ? "" : "s"}
-                    </span>
-                    <button
-                      type="button"
-                      aria-label={`Delete ${group.name}`}
-                      onClick={() => removeSubteam(group.id)}
-                      className="rounded px-2 py-1 text-xs font-medium text-graphite-400 transition hover:bg-maroon-50 hover:text-maroon-700 dark:hover:text-maroon-300"
-                    >
-                      ✕
-                    </button>
-                  </li>
-                );
-              })}
-            </ul>
-          )}
-
-          <form
-            onSubmit={(e) => {
-              e.preventDefault();
-              addSubteam();
-            }}
-            className="flex items-center gap-2"
-          >
-            <input
-              type="text"
-              placeholder="e.g. Stands crew A"
-              value={newSubteamName}
-              onChange={(e) => setNewSubteamName(e.target.value)}
-              className="field-input flex-1 py-1.5"
-            />
-            <button
-              type="submit"
-              disabled={!newSubteamName.trim()}
-              className="btn-secondary px-4 py-2"
-            >
-              Add subteam
-            </button>
-          </form>
-
-          <label className="flex flex-wrap items-center gap-2 text-sm text-graphite-700">
-            <span>Matches per sitting</span>
-            <input
-              type="number"
-              min={MIN_MATCHES_PER_SITTING}
-              max={MAX_MATCHES_PER_SITTING}
-              value={subteamsDoc.matchesPerSitting}
-              onChange={(e) =>
-                void saveSubteams({
-                  ...subteamsDoc,
-                  matchesPerSitting: clampMatchesPerSitting(
-                    Number(e.target.value),
-                  ),
-                })
-              }
-              className="field-input stat w-20 py-1.5"
-            />
-            <span className="text-xs text-graphite-500">
-              how many matches one scout covers before their subteam rotates
-              off
-            </span>
-          </label>
-        </div>
-      )}
 
       {isAdmin && (
         <div className="surface-card flex flex-col gap-2 p-4">
@@ -807,30 +710,47 @@ export default function TeamPage() {
                   inactive
                 </span>
               )}
-              {/* New scouts are auto-placed in the smallest subteam; this is
-                  how an admin moves them somewhere else. */}
-              {isAdmin && usingSubteams && member.role === "scout" && member.active && (
+              {/* Only the first three duties go into a rotation; the rest
+                  mark someone as busy elsewhere. Shown for scouts on either
+                  team of a sister pair, since both share the schedule. */}
+              {isAdmin && member.role === "scout" && member.active && (
                 <select
-                  value={memberships[member.uid] ?? ""}
-                  aria-label={`Subteam for ${member.fullName}`}
-                  onChange={(e) => setMembership(member.uid, e.target.value)}
+                  value={dutyFor(dutiesDoc.duties, member.uid)}
+                  aria-label={`Scouting duty for ${member.fullName}`}
+                  onChange={(e) =>
+                    setDuty(member.uid, e.target.value as ScoutDuty)
+                  }
                   className="field-input w-auto py-1 text-xs"
                 >
-                  {subteamsDoc.subteams.map((group) => (
-                    <option key={group.id} value={group.id}>
-                      {group.name}
+                  {SCOUT_DUTIES.map((duty) => (
+                    <option key={duty} value={duty}>
+                      {DUTY_LABELS[duty]}
                     </option>
                   ))}
                 </select>
               )}
+              {!isAdmin && member.role === "scout" && member.active && (
+                <span className="rounded bg-graphite-100 px-1.5 py-0.5 text-xs font-semibold text-graphite-600">
+                  {DUTY_LABELS[dutyFor(dutiesDoc.duties, member.uid)]}
+                </span>
+              )}
               {isAdmin && member.uid !== user?.uid && member.teamId === profile?.teamId && (
-                <button
-                  type="button"
-                  onClick={() => void toggleActive(member)}
-                  className="btn-ghost border border-graphite-200 px-2.5 py-1"
-                >
-                  {member.active ? "Deactivate" : "Reactivate"}
-                </button>
+                <>
+                  <button
+                    type="button"
+                    onClick={() => void toggleRole(member)}
+                    className="btn-ghost border border-graphite-200 px-2.5 py-1"
+                  >
+                    {member.role === "admin" ? "Make scout" : "Make admin"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void toggleActive(member)}
+                    className="btn-ghost border border-graphite-200 px-2.5 py-1"
+                  >
+                    {member.active ? "Deactivate" : "Reactivate"}
+                  </button>
+                </>
               )}
             </div>
           </li>

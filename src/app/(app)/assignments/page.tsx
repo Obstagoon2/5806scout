@@ -325,12 +325,6 @@ function MatchView({
                   {isAdmin && (
                     <td className="px-3 py-2">
                       {matchDoc.scoutNames[slot.uid] ?? slot.uid}
-                      {/* Absent on sets generated before subteams existed. */}
-                      {slot.subteamName && (
-                        <span className="ml-1.5 text-xs text-graphite-400">
-                          {slot.subteamName}
-                        </span>
-                      )}
                     </td>
                   )}
                 </tr>

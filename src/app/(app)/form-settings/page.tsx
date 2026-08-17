@@ -5,24 +5,33 @@ import { useAuth } from "@/lib/auth/AuthProvider";
 import {
   CUSTOM_SECTION_TITLE,
   makeCustomFieldId,
+  removeSectionFromCustomization,
   SCOUT_FORMS_DOC_ID,
   type CustomField,
   type CustomFieldKind,
   type FormCustomization,
 } from "@/lib/customForms";
+import { PREDICTION_FIELD_IDS } from "@/lib/drive";
 import { db } from "@/lib/firebase/client";
 import type { FormSection } from "@/lib/formSchema";
+import {
+  MATCH_FIELD_LABELS,
+  MATCH_SCOUT_SECTIONS,
+} from "@/lib/matchScoutSchema";
 import { PIT_SCOUT_SECTIONS } from "@/lib/pitScoutSchema";
 import { useScoutForms } from "@/lib/useScoutForms";
 import { doc, serverTimestamp, setDoc } from "firebase/firestore";
 import { useState } from "react";
-// The Match Scout form is no longer editable here: it's a bespoke REBUILT
-// screen (see match-scout/page.tsx) whose fields are fixed by the game.
-type FormKey = "pitScout";
+
+// Match Scout is a bespoke REBUILT screen (see match-scout/page.tsx), so its
+// season questions can be struck or deleted here but not restyled — and the
+// ones the Drive Dash predictor reads get a warning before they go.
+type FormKey = "pitScout" | "matchScout";
 type Tab = FormKey | "website";
 
 const TAB_LABELS: Record<Tab, string> = {
   pitScout: "Pit Scout",
+  matchScout: "Match Scout",
   website: "Website Customization",
 };
 
@@ -31,7 +40,11 @@ const FORMS: Record<
   { label: string; sections: readonly FormSection[] }
 > = {
   pitScout: { label: "Pit Scout", sections: PIT_SCOUT_SECTIONS },
+  matchScout: { label: "Match Scout", sections: MATCH_SCOUT_SECTIONS },
 };
+
+/** Match Scout fields whose loss degrades Drive Dash predictions. */
+const PREDICTION_FIELDS = new Set(PREDICTION_FIELD_IDS);
 
 const KIND_LABELS: Record<CustomFieldKind, string> = {
   text: "Short text",
@@ -112,7 +125,11 @@ export default function FormSettingsPage() {
     FormCustomization
   > | null>(null);
   const [status, setStatus] = useState<Status>({ state: "idle" });
-  const working = drafts ?? (config ? { pitScout: config.pitScout } : null);
+  const working =
+    drafts ??
+    (config
+      ? { pitScout: config.pitScout, matchScout: config.matchScout }
+      : null);
 
   // New-question builder state.
   const [newLabel, setNewLabel] = useState("");
@@ -155,6 +172,36 @@ export default function FormSettingsPage() {
     ? newSection
     : CUSTOM_SECTION_TITLE;
 
+  // Predictor inputs this draft drops. Only Match Scout feeds the Drive Dash,
+  // so the Pit tab never has any.
+  const droppedPredictionFields =
+    formKey === "matchScout"
+      ? PREDICTION_FIELD_IDS.filter(
+          (fieldId) => hidden.has(fieldId) || removed.has(fieldId),
+        )
+      : [];
+  const droppedPredictionLabels = droppedPredictionFields.map(
+    (fieldId) => MATCH_FIELD_LABELS[fieldId] ?? fieldId,
+  );
+
+  /**
+   * Confirm before an edit costs the predictor a field it reads. Returns true
+   * when the edit should go ahead — the admin is never blocked, only warned.
+   */
+  function confirmPredictionLoss(fieldIds: readonly string[]): boolean {
+    if (formKey !== "matchScout") return true;
+    const atRisk = fieldIds.filter(
+      (fieldId) => PREDICTION_FIELDS.has(fieldId) && !hidden.has(fieldId) && !removed.has(fieldId),
+    );
+    if (atRisk.length === 0) return true;
+    const labels = atRisk
+      .map((fieldId) => `“${MATCH_FIELD_LABELS[fieldId] ?? fieldId}”`)
+      .join(", ");
+    return window.confirm(
+      `${labels} feeds the match predictions on the Drive Dash. Dropping it means those predictions stop counting its points. Continue?`,
+    );
+  }
+
   function updateDraft(update: (prev: FormCustomization) => FormCustomization) {
     if (working) {
       setDrafts({ ...working, [formKey]: update(working[formKey]) });
@@ -163,6 +210,8 @@ export default function FormSettingsPage() {
   }
 
   function toggleFieldVisible(fieldId: string) {
+    const striking = !hidden.has(fieldId);
+    if (striking && !confirmPredictionLoss([fieldId])) return;
     updateDraft((prev) => ({
       ...prev,
       hiddenFieldIds: prev.hiddenFieldIds.includes(fieldId)
@@ -237,21 +286,46 @@ export default function FormSettingsPage() {
     setNewSection(title);
   }
 
+  /**
+   * Delete a whole section and everything in it. Default questions land in
+   * the "Removed questions" drawer so the admin can put them back one by one;
+   * team-added ones are gone for good, so the confirm spells out the count.
+   */
   function removeSection(title: string) {
-    updateDraft((prev) => ({
-      ...prev,
-      customSections: prev.customSections.filter((s) => s !== title),
-      // Questions outlive their section rather than vanishing with it — they
-      // fall back to the catch-all, where the admin can re-file or delete them.
-      customFields: prev.customFields.map((field) =>
-        field.section === title
-          ? { ...field, section: CUSTOM_SECTION_TITLE }
-          : field,
-      ),
-    }));
+    if (!draft) return;
+    const defaultFields =
+      defaults
+        .find((section) => section.title === title)
+        ?.fields.filter((field) => !removed.has(field.id)) ?? [];
+    const customFields = draft.customFields.filter(
+      (field) => field.section === title,
+    );
+    const total = defaultFields.length + customFields.length;
+    if (
+      total > 0 &&
+      !window.confirm(
+        `Delete “${title}” and its ${total} question${total === 1 ? "" : "s"}?` +
+          (defaultFields.length > 0
+            ? " Default questions can be restored from “Removed questions”."
+            : "") +
+          (customFields.length > 0
+            ? ` ${customFields.length} question${
+                customFields.length === 1 ? "" : "s"
+              } your team added will be deleted permanently.`
+            : ""),
+      )
+    ) {
+      return;
+    }
+    if (!confirmPredictionLoss(defaultFields.map((field) => field.id))) return;
+
+    updateDraft((prev) =>
+      removeSectionFromCustomization(prev, title, defaults),
+    );
   }
 
   function removeDefaultQuestion(fieldId: string) {
+    if (!confirmPredictionLoss([fieldId])) return;
     updateDraft((prev) => ({
       ...prev,
       // Clear any strike so a later restore brings the question back active.
@@ -276,14 +350,28 @@ export default function FormSettingsPage() {
 
   async function handleSave() {
     if (!working || !profile || !user || !dataTeamId) return;
+    // Last chance to back out: this is the point where every scout's form —
+    // and the Drive Dash — actually changes.
+    if (
+      droppedPredictionLabels.length > 0 &&
+      !window.confirm(
+        `Saving drops ${droppedPredictionLabels
+          .map((label) => `“${label}”`)
+          .join(", ")} from Match Scout. The Drive Dash will show degraded ` +
+          `predictions until you restore ${
+            droppedPredictionLabels.length === 1 ? "it" : "them"
+          }. Save anyway?`,
+      )
+    ) {
+      return;
+    }
     setStatus({ state: "saving" });
     try {
-      // merge keeps any legacy matchScout customization in the doc untouched
-      // — harmless now that nothing reads it.
       await setDoc(
         doc(db, "teams", dataTeamId, "config", SCOUT_FORMS_DOC_ID),
         {
           pitScout: working.pitScout,
+          matchScout: working.matchScout,
           updatedAt: serverTimestamp(),
           updatedByUid: user.uid,
           updatedByName: profile.fullName,
@@ -311,7 +399,7 @@ export default function FormSettingsPage() {
         <p className="mt-1 text-sm text-graphite-500">
           {tab === "website"
             ? "Brand the app for your team — accent color, background, font, and the top-left logo. Changes apply to everyone."
-            : "Tune the Pit Scout form for your team — uncheck a question to strike it out, trash it to remove it, add your own sections and questions. Changes apply to everyone on the team. (The Match Scout form is built for this season's game and isn't editable.)"}
+            : `Tune the ${FORMS[formKey].label} form for your team — uncheck a question to strike it out, trash it to remove it, delete a whole section, add your own sections and questions. Changes apply to everyone on the team.`}
         </p>
       </div>
 
@@ -342,6 +430,30 @@ export default function FormSettingsPage() {
 
       {tab !== "website" && draft && (
         <>
+          {formKey === "matchScout" && (
+            <p className="surface-panel px-4 py-3 text-xs text-graphite-500">
+              Match Scout is a bespoke screen built for this season&apos;s game,
+              so its default questions keep their fast one-tap controls — you
+              can strike or delete them, and questions you add render below the
+              section they belong to. Questions your team adds are tracked in
+              the Data and Teams tabs but never count toward match predictions.
+            </p>
+          )}
+
+          {droppedPredictionLabels.length > 0 && (
+            <p className="badge-error flex items-start gap-2 rounded-md px-3 py-2 text-sm normal-case tracking-normal">
+              <span aria-hidden>⚠</span>
+              <span>
+                Match predictions on the Drive Dash are degraded:{" "}
+                {droppedPredictionLabels.join(", ")}{" "}
+                {droppedPredictionLabels.length === 1 ? "is" : "are"} no longer
+                scouted, so {droppedPredictionLabels.length === 1 ? "its" : "their"}{" "}
+                points drop out of every prediction. Restore from “Removed
+                questions” below to fix.
+              </span>
+            </p>
+          )}
+
           <section className="flex flex-col gap-3">
             <h2 className="section-title">Default questions</h2>
             {defaults.map((section) => {
@@ -351,10 +463,21 @@ export default function FormSettingsPage() {
               if (visibleFields.length === 0) return null;
               return (
                 <div key={section.title} className="surface-card p-4">
-                  <h3 className="mb-3 flex items-center gap-2 text-xs font-semibold uppercase tracking-widest text-maroon-700 dark:text-maroon-300">
-                    <span aria-hidden className="h-2.5 w-1 bg-maroon-600" />
-                    {section.title}
-                  </h3>
+                  <div className="mb-3 flex items-center justify-between gap-3">
+                    <h3 className="flex items-center gap-2 text-xs font-semibold uppercase tracking-widest text-maroon-700 dark:text-maroon-300">
+                      <span aria-hidden className="h-2.5 w-1 bg-maroon-600" />
+                      {section.title}
+                    </h3>
+                    <button
+                      type="button"
+                      onClick={() => removeSection(section.title)}
+                      aria-label={`Delete section ${section.title}`}
+                      title="Delete this section and its questions"
+                      className="shrink-0 rounded-md p-1.5 text-graphite-500 transition hover:bg-maroon-50 hover:text-maroon-600 dark:hover:text-maroon-400"
+                    >
+                      <TrashIcon />
+                    </button>
+                  </div>
                   <ul className="flex flex-col divide-y divide-graphite-100">
                     {visibleFields.map((field) => {
                       const isHidden = hidden.has(field.id);
@@ -383,6 +506,15 @@ export default function FormSettingsPage() {
                             <span className="badge bg-graphite-100 text-graphite-500">
                               {KIND_LABELS[field.kind]}
                             </span>
+                            {formKey === "matchScout" &&
+                              PREDICTION_FIELDS.has(field.id) && (
+                                <span
+                                  className="badge shrink-0 bg-amber-100 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300"
+                                  title="The Drive Dash match predictor reads this question"
+                                >
+                                  Predicts
+                                </span>
+                              )}
                           </label>
                           <button
                             type="button"
@@ -467,11 +599,11 @@ export default function FormSettingsPage() {
                       <button
                         type="button"
                         onClick={() => removeSection(title)}
-                        aria-label={`Remove section ${title}`}
+                        aria-label={`Delete section ${title}`}
                         title={
                           questionCount > 0
-                            ? `Remove section — its questions move to “${CUSTOM_SECTION_TITLE}”`
-                            : "Remove section"
+                            ? "Delete this section and its questions"
+                            : "Delete section"
                         }
                         className="shrink-0 rounded-md p-1.5 text-graphite-500 transition hover:bg-maroon-50 hover:text-maroon-600 dark:hover:text-maroon-400"
                       >

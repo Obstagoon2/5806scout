@@ -3,12 +3,20 @@
 import { DrawingPad } from "@/components/DrawingPad";
 import { MyMatchAssignments } from "@/components/MyAssignments";
 import { ReliabilityWarning } from "@/components/ReliabilityFlags";
+import { SchemaField } from "@/components/SchemaForm";
 import { slotKey, type MatchSlot } from "@/lib/assignments";
 import { useAuth } from "@/lib/auth/AuthProvider";
 import { db } from "@/lib/firebase/client";
-import { emptyValues, type FormValues } from "@/lib/formSchema";
+import {
+  emptyValues,
+  missingRequiredFields,
+  type FieldDef,
+  type FormSection,
+  type FormValues,
+} from "@/lib/formSchema";
 import { MATCH_SCOUT_SECTIONS } from "@/lib/matchScoutSchema";
 import { RELIABILITY_FLAGS_DOC_ID } from "@/lib/reliability";
+import { useScoutForms } from "@/lib/useScoutForms";
 import {
   addDoc,
   arrayUnion,
@@ -22,13 +30,18 @@ import {
   setDoc,
   updateDoc,
 } from "firebase/firestore";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 // Bespoke REBUILT (2026) match scout screen. The generic schema-driven form
 // couldn't keep up with this game — fuel arrives hundreds of balls at a time,
 // so counting needs ±5/±10 buttons, and climbs/ratings want one-tap segmented
 // pickers. Field ids and options stay in lockstep with MATCH_SCOUT_SECTIONS
 // (the data dictionary the Data/Drive/Teams/Picklist pages aggregate from).
+//
+// The season questions below are hand-rendered, but the form a team actually
+// sees is the customized one (useScoutForms): a question the team deleted from
+// Form Setup renders nothing here, and questions the team added render
+// generically at the end of their section.
 
 type Alliance = "red" | "blue";
 
@@ -58,9 +71,22 @@ const PRESET_VALUES: FormValues = {
   card: "None",
 };
 
-function freshValues(): FormValues {
-  return { ...emptyValues(MATCH_SCOUT_SECTIONS), ...PRESET_VALUES };
+function freshValues(sections: readonly FormSection[]): FormValues {
+  // Presets only apply to the season questions they name; a team that deleted
+  // one just never gets that key, which is what emptyValues already implies.
+  return { ...emptyValues(sections), ...PRESET_VALUES };
 }
+
+/** Season ids this screen hand-renders — everything else renders generically. */
+const BESPOKE_FIELD_IDS = new Set(
+  MATCH_SCOUT_SECTIONS.flatMap((section) =>
+    section.fields.map((field) => field.id),
+  ),
+);
+
+const DEFAULT_SECTION_TITLES = MATCH_SCOUT_SECTIONS.map(
+  (section) => section.title,
+);
 
 /** Section header matching the app's fieldset-legend convention. */
 function SectionTitle({ children }: { children: React.ReactNode }) {
@@ -249,10 +275,16 @@ function RatingScale({
 
 export default function MatchScoutPage() {
   const { profile, user, dataTeamId } = useAuth();
+  const { matchSections } = useScoutForms();
   const [matchNumber, setMatchNumber] = useState("");
   const [scoutedTeam, setScoutedTeam] = useState("");
   const [alliance, setAlliance] = useState<Alliance | null>(null);
-  const [values, setValues] = useState<FormValues>(freshValues);
+  // What the scout has actually touched. The form's live values are this laid
+  // over the effective schema's blanks (see `values`), so a question the team
+  // added mid-session appears with a default instead of undefined.
+  const [entered, setEntered] = useState<FormValues>(() =>
+    freshValues(MATCH_SCOUT_SECTIONS),
+  );
   const [status, setStatus] = useState<Status>({ state: "idle" });
   const [reliabilityIssue, setReliabilityIssue] = useState(false);
   const [recent, setRecent] = useState<RecentSubmission[]>([]);
@@ -260,6 +292,45 @@ export default function MatchScoutPage() {
   // submit can cross it off. Submitting clears it; if the scout edited the
   // match or team in between, the guard at submit time skips the cross-off.
   const [pickedSlot, setPickedSlot] = useState<MatchSlot | null>(null);
+
+  // Which questions this team's form actually asks, and where the team-added
+  // ones belong. Both drive what renders below.
+  const shownFieldIds = useMemo(
+    () =>
+      new Set(
+        matchSections.flatMap((section) =>
+          section.fields.map((field) => field.id),
+        ),
+      ),
+    [matchSections],
+  );
+  const extrasBySection = useMemo(() => {
+    const bySection = new Map<string, FieldDef[]>();
+    for (const section of matchSections) {
+      const extras = section.fields.filter(
+        (field) => !BESPOKE_FIELD_IDS.has(field.id),
+      );
+      if (extras.length > 0) bySection.set(section.title, extras);
+    }
+    return bySection;
+  }, [matchSections]);
+  // Sections the team invented — they render after the season's Post-Match
+  // block, in the order Form Setup arranged them.
+  const extraSections = useMemo(
+    () =>
+      matchSections.filter(
+        (section) => !DEFAULT_SECTION_TITLES.includes(section.title),
+      ),
+    [matchSections],
+  );
+
+  // The config snapshot lands after first paint, so blanks for the team's own
+  // questions get filled in here rather than by a reset that would wipe
+  // whatever the scout has already tapped in.
+  const values = useMemo<FormValues>(
+    () => ({ ...freshValues(matchSections), ...entered }),
+    [matchSections, entered],
+  );
 
   useEffect(() => {
     // Submissions land in the shared store so a sister pair pools its data.
@@ -287,7 +358,7 @@ export default function MatchScoutPage() {
   }, [dataTeamId]);
 
   function setValue(id: string, value: FormValues[string]) {
-    setValues((prev) => ({ ...prev, [id]: value }));
+    setEntered((prev) => ({ ...prev, [id]: value }));
     if (status.state !== "idle" && status.state !== "saving") {
       setStatus({ state: "idle" });
     }
@@ -308,13 +379,30 @@ export default function MatchScoutPage() {
       return;
     }
 
+    // Only team-added questions can carry a required flag; the season ones
+    // stay optional so a scout is never blocked mid-match.
+    const missing = missingRequiredFields(matchSections, values);
+    if (!noShow && missing.length > 0) {
+      setStatus({
+        state: "error",
+        message: `Answer required: ${missing.join(", ")}.`,
+      });
+      return;
+    }
+
+    // Drop answers to questions the team has since deleted, so a submission
+    // only carries keys the form currently asks about.
+    const submittedValues: FormValues = Object.fromEntries(
+      Object.entries(values).filter(([id]) => shownFieldIds.has(id)),
+    );
+
     setStatus({ state: "saving" });
     try {
       await addDoc(collection(db, "teams", dataTeamId, "matchScouting"), {
         matchNumber: match,
         scoutedTeam: team,
         alliance,
-        values,
+        values: submittedValues,
         reliabilityIssue,
         scoutName: profile.fullName,
         scoutUid: user.uid,
@@ -368,7 +456,7 @@ export default function MatchScoutPage() {
       // usually watches the same station), clear team + tallies + the flag.
       setMatchNumber(String(match + 1));
       setScoutedTeam("");
-      setValues(freshValues());
+      setEntered(freshValues(matchSections));
       setReliabilityIssue(false);
       setStatus({ state: "saved" });
     } catch (err) {
@@ -380,6 +468,21 @@ export default function MatchScoutPage() {
   }
 
   const inputClass = "field-input stat";
+
+  const has = (fieldId: string) => shownFieldIds.has(fieldId);
+  const hasSection = (title: string) =>
+    matchSections.some((section) => section.title === title);
+
+  /** The team's own questions for one of the season's sections. */
+  const renderExtras = (title: string) =>
+    (extrasBySection.get(title) ?? []).map((field) => (
+      <SchemaField
+        key={field.id}
+        field={field}
+        value={values[field.id]}
+        onChange={(value) => setValue(field.id, value)}
+      />
+    ));
 
   return (
     <main className="mx-auto flex w-full max-w-2xl flex-col gap-6 px-4 py-8 md:px-6">
@@ -471,180 +574,272 @@ export default function MatchScoutPage() {
           </div>
         </div>
 
-        <Segmented
-          label="Starting position"
-          options={["Depot side", "Center (Hub)", "Outpost side"]}
-          value={values.startPos as string | null}
-          onChange={(v) => setValue("startPos", v)}
-        />
-
-        <label
-          className={`flex cursor-pointer items-center gap-2.5 rounded-md border px-3 py-2.5 transition ${
-            noShow
-              ? "border-amber-500 bg-amber-100/50"
-              : "border-graphite-200 hover:border-graphite-300"
-          }`}
-        >
-          <input
-            type="checkbox"
-            checked={noShow}
-            onChange={(e) => setValue("noShow", e.target.checked ? "Yes" : "No")}
-            className="h-4 w-4 shrink-0 accent-amber-500"
+        {has("startPos") && (
+          <Segmented
+            label="Starting position"
+            options={["Depot side", "Center (Hub)", "Outpost side"]}
+            value={values.startPos as string | null}
+            onChange={(v) => setValue("startPos", v)}
           />
-          <span className="text-sm font-semibold text-graphite-700">
-            No show — robot never took the field
-          </span>
-        </label>
+        )}
+
+        {has("noShow") && (
+          <label
+            className={`flex cursor-pointer items-center gap-2.5 rounded-md border px-3 py-2.5 transition ${
+              noShow
+                ? "border-amber-500 bg-amber-100/50"
+                : "border-graphite-200 hover:border-graphite-300"
+            }`}
+          >
+            <input
+              type="checkbox"
+              checked={noShow}
+              onChange={(e) =>
+                setValue("noShow", e.target.checked ? "Yes" : "No")
+              }
+              className="h-4 w-4 shrink-0 accent-amber-500"
+            />
+            <span className="text-sm font-semibold text-graphite-700">
+              No show — robot never took the field
+            </span>
+          </label>
+        )}
+
+        {renderExtras("Pre-Match")}
 
         {/* A no-show has nothing to scout; skip straight to notes. */}
         {!noShow && (
           <>
             {/* ——— Autonomous ——— */}
-            <SectionTitle>Autonomous</SectionTitle>
+            {hasSection("Autonomous") && (
+              <>
+                <SectionTitle>Autonomous</SectionTitle>
 
-            <Segmented
-              label="Left starting zone"
-              options={["Yes", "No"]}
-              value={values.autoLeave as string | null}
-              onChange={(v) => setValue("autoLeave", v)}
-            />
+                {has("autoLeave") && (
+                  <Segmented
+                    label="Left starting zone"
+                    options={["Yes", "No"]}
+                    value={values.autoLeave as string | null}
+                    onChange={(v) => setValue("autoLeave", v)}
+                  />
+                )}
 
-            <FuelCounter
-              label="Fuel scored — auto"
-              value={(values.autoScoredFuel as number) ?? 0}
-              onChange={(v) => setValue("autoScoredFuel", v)}
-            />
+                {has("autoScoredFuel") && (
+                  <FuelCounter
+                    label="Fuel scored — auto"
+                    value={(values.autoScoredFuel as number) ?? 0}
+                    onChange={(v) => setValue("autoScoredFuel", v)}
+                  />
+                )}
 
-            <Chips
-              label="Collected fuel from"
-              options={["Preload", "Depot", "Outpost", "Neutral zone"]}
-              value={(values.autoFuelSource as string[]) ?? []}
-              onChange={(v) => setValue("autoFuelSource", v)}
-            />
+                {has("autoFuelSource") && (
+                  <Chips
+                    label="Collected fuel from"
+                    options={["Preload", "Depot", "Outpost", "Neutral zone"]}
+                    value={(values.autoFuelSource as string[]) ?? []}
+                    onChange={(v) => setValue("autoFuelSource", v)}
+                  />
+                )}
 
-            <Segmented
-              label="Auto climb — Level 1 (15 pts)"
-              options={["No attempt", "Climbed (L1)", "Failed"]}
-              value={values.autoClimb as string | null}
-              onChange={(v) => setValue("autoClimb", v)}
-            />
+                {has("autoClimb") && (
+                  <Segmented
+                    label="Auto climb — Level 1 (15 pts)"
+                    options={["No attempt", "Climbed (L1)", "Failed"]}
+                    value={values.autoClimb as string | null}
+                    onChange={(v) => setValue("autoClimb", v)}
+                  />
+                )}
 
-            <DrawingPad
-              label="Auto path"
-              hint="Trace the route the robot drove during auto."
-              value={(values.autoPath as string) ?? null}
-              onChange={(v) => setValue("autoPath", v)}
-            />
+                {has("autoPath") && (
+                  <DrawingPad
+                    label="Auto path"
+                    hint="Trace the route the robot drove during auto."
+                    value={(values.autoPath as string) ?? null}
+                    onChange={(v) => setValue("autoPath", v)}
+                  />
+                )}
+
+                {renderExtras("Autonomous")}
+              </>
+            )}
 
             {/* ——— Teleop ——— */}
-            <SectionTitle>Teleop</SectionTitle>
+            {hasSection("Teleop") && (
+              <>
+                <SectionTitle>Teleop</SectionTitle>
 
-            <FuelCounter
-              label="Fuel scored — teleop"
-              value={(values.teleopScoredFuel as number) ?? 0}
-              onChange={(v) => setValue("teleopScoredFuel", v)}
-            />
+                {has("teleopScoredFuel") && (
+                  <FuelCounter
+                    label="Fuel scored — teleop"
+                    value={(values.teleopScoredFuel as number) ?? 0}
+                    onChange={(v) => setValue("teleopScoredFuel", v)}
+                  />
+                )}
 
-            <FuelCounter
-              label="Fuel fed / passed"
-              value={(values.teleopFuelFed as number) ?? 0}
-              onChange={(v) => setValue("teleopFuelFed", v)}
-            />
+                {has("teleopFuelFed") && (
+                  <FuelCounter
+                    label="Fuel fed / passed"
+                    value={(values.teleopFuelFed as number) ?? 0}
+                    onChange={(v) => setValue("teleopFuelFed", v)}
+                  />
+                )}
 
-            <Chips
-              label="Collected fuel from"
-              options={["Depot", "Outpost", "Neutral zone", "Opposing zone"]}
-              value={(values.teleopFuelSource as string[]) ?? []}
-              onChange={(v) => setValue("teleopFuelSource", v)}
-            />
+                {has("teleopFuelSource") && (
+                  <Chips
+                    label="Collected fuel from"
+                    options={["Depot", "Outpost", "Neutral zone", "Opposing zone"]}
+                    value={(values.teleopFuelSource as string[]) ?? []}
+                    onChange={(v) => setValue("teleopFuelSource", v)}
+                  />
+                )}
 
-            <Chips
-              label="Crossed during match"
-              options={["Bump", "Trench"]}
-              value={(values.crossings as string[]) ?? []}
-              onChange={(v) => setValue("crossings", v)}
-            />
+                {has("crossings") && (
+                  <Chips
+                    label="Crossed during match"
+                    options={["Bump", "Trench"]}
+                    value={(values.crossings as string[]) ?? []}
+                    onChange={(v) => setValue("crossings", v)}
+                  />
+                )}
 
-            <Segmented
-              label="Played defense"
-              options={["No", "Part of match", "Most of match"]}
-              value={values.defensePlayed as string | null}
-              onChange={(v) => setValue("defensePlayed", v)}
-            />
+                {has("defensePlayed") && (
+                  <Segmented
+                    label="Played defense"
+                    options={["No", "Part of match", "Most of match"]}
+                    value={values.defensePlayed as string | null}
+                    onChange={(v) => setValue("defensePlayed", v)}
+                  />
+                )}
 
-            <Segmented
-              label="Was defended"
-              options={["No", "Yes"]}
-              value={values.wasDefended as string | null}
-              onChange={(v) => setValue("wasDefended", v)}
-            />
+                {has("wasDefended") && (
+                  <Segmented
+                    label="Was defended"
+                    options={["No", "Yes"]}
+                    value={values.wasDefended as string | null}
+                    onChange={(v) => setValue("wasDefended", v)}
+                  />
+                )}
+
+                {renderExtras("Teleop")}
+              </>
+            )}
 
             {/* ——— Endgame ——— */}
-            <SectionTitle>Endgame</SectionTitle>
+            {hasSection("Endgame") && (
+              <>
+                <SectionTitle>Endgame</SectionTitle>
 
-            <Segmented
-              label="Tower climb (L1 10 · L2 20 · L3 30)"
-              options={["None", "Level 1", "Level 2", "Level 3", "Failed attempt"]}
-              value={values.endgame as string | null}
-              onChange={(v) => setValue("endgame", v)}
-              columns={3}
-            />
+                {has("endgame") && (
+                  <Segmented
+                    label="Tower climb (L1 10 · L2 20 · L3 30)"
+                    options={[
+                      "None",
+                      "Level 1",
+                      "Level 2",
+                      "Level 3",
+                      "Failed attempt",
+                    ]}
+                    value={values.endgame as string | null}
+                    onChange={(v) => setValue("endgame", v)}
+                    columns={3}
+                  />
+                )}
+
+                {renderExtras("Endgame")}
+              </>
+            )}
 
             {/* ——— Post-Match ——— */}
-            <SectionTitle>Post-Match</SectionTitle>
+            {hasSection("Post-Match") && (
+              <>
+                <SectionTitle>Post-Match</SectionTitle>
 
-            <RatingScale
-              label="Driver skill (0–5)"
-              value={(values.driverSkill as number) ?? 0}
-              onChange={(v) => setValue("driverSkill", v)}
-            />
+                {has("driverSkill") && (
+                  <RatingScale
+                    label="Driver skill (0–5)"
+                    value={(values.driverSkill as number) ?? 0}
+                    onChange={(v) => setValue("driverSkill", v)}
+                  />
+                )}
 
-            <RatingScale
-              label="Defense skill (0–5)"
-              value={(values.defenseSkill as number) ?? 0}
-              onChange={(v) => setValue("defenseSkill", v)}
-            />
+                {has("defenseSkill") && (
+                  <RatingScale
+                    label="Defense skill (0–5)"
+                    value={(values.defenseSkill as number) ?? 0}
+                    onChange={(v) => setValue("defenseSkill", v)}
+                  />
+                )}
 
-            <Segmented
-              label="Died / immobilized"
-              options={["No", "Briefly", "Most of match"]}
-              value={values.died as string | null}
-              onChange={(v) => setValue("died", v)}
-            />
+                {has("died") && (
+                  <Segmented
+                    label="Died / immobilized"
+                    options={["No", "Briefly", "Most of match"]}
+                    value={values.died as string | null}
+                    onChange={(v) => setValue("died", v)}
+                  />
+                )}
 
-            <Segmented
-              label="Tipped / fell over"
-              options={["No", "Yes"]}
-              value={values.tipped as string | null}
-              onChange={(v) => setValue("tipped", v)}
-            />
+                {has("tipped") && (
+                  <Segmented
+                    label="Tipped / fell over"
+                    options={["No", "Yes"]}
+                    value={values.tipped as string | null}
+                    onChange={(v) => setValue("tipped", v)}
+                  />
+                )}
 
-            <Segmented
-              label="Card"
-              options={["None", "Yellow", "Red"]}
-              value={values.card as string | null}
-              onChange={(v) => setValue("card", v)}
-            />
+                {has("card") && (
+                  <Segmented
+                    label="Card"
+                    options={["None", "Yellow", "Red"]}
+                    value={values.card as string | null}
+                    onChange={(v) => setValue("card", v)}
+                  />
+                )}
 
-            <Segmented
-              label="Would you pick them?"
-              options={["Yes", "Maybe", "No"]}
-              value={values.wouldPick as string | null}
-              onChange={(v) => setValue("wouldPick", v)}
-            />
+                {has("wouldPick") && (
+                  <Segmented
+                    label="Would you pick them?"
+                    options={["Yes", "Maybe", "No"]}
+                    value={values.wouldPick as string | null}
+                    onChange={(v) => setValue("wouldPick", v)}
+                  />
+                )}
+
+                {renderExtras("Post-Match")}
+              </>
+            )}
           </>
         )}
 
-        <label className="flex flex-col gap-1.5">
-          <span className="text-sm font-medium text-graphite-700">Notes</span>
-          <textarea
-            rows={3}
-            placeholder="Shooting range, cycle speed, driver skill, anything unusual…"
-            value={(values.notes as string) ?? ""}
-            onChange={(e) => setValue("notes", e.target.value || null)}
-            className="field-input"
-          />
-        </label>
+        {has("notes") && (
+          <label className="flex flex-col gap-1.5">
+            <span className="text-sm font-medium text-graphite-700">Notes</span>
+            <textarea
+              rows={3}
+              placeholder="Shooting range, cycle speed, driver skill, anything unusual…"
+              value={(values.notes as string) ?? ""}
+              onChange={(e) => setValue("notes", e.target.value || null)}
+              className="field-input"
+            />
+          </label>
+        )}
+
+        {/* The team's own sections stay outside the no-show gate — a question
+            like "why didn't they show?" is exactly what they're for. */}
+        {extraSections.map((section) => (
+          <div key={section.title} className="flex flex-col gap-5">
+            <SectionTitle>{section.title}</SectionTitle>
+            {section.fields.map((field) => (
+              <SchemaField
+                key={field.id}
+                field={field}
+                value={values[field.id]}
+                onChange={(value) => setValue(field.id, value)}
+              />
+            ))}
+          </div>
+        ))}
 
         <label
           className={`flex cursor-pointer items-center gap-2.5 rounded-md border px-3 py-2.5 transition ${
