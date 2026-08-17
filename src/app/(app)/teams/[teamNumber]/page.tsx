@@ -1,5 +1,6 @@
 "use client";
 
+import { PitAnswerList } from "@/components/PitAnswers";
 import { useAuth } from "@/lib/auth/AuthProvider";
 import {
   aggregateByTeam,
@@ -13,7 +14,7 @@ import {
 } from "@/lib/drive";
 import type { EventData } from "@/lib/eventData";
 import { db } from "@/lib/firebase/client";
-import type { FieldDef, FormValues } from "@/lib/formSchema";
+import type { FormValues } from "@/lib/formSchema";
 import { PIT_MEDIA_COLLECTION } from "@/lib/pitScoutSchema";
 import { useScoutForms } from "@/lib/useScoutForms";
 import { collection, doc, onSnapshot, orderBy, query } from "firebase/firestore";
@@ -346,35 +347,10 @@ export default function TeamDetailPage() {
                 Scouted by {pitScoutName}.
               </p>
             )}
-            {pitSections.map((section) => {
-              const answered = section.fields.filter((field) =>
-                hasAnswer(field, { ...pitValues, ...pitMedia }),
-              );
-              if (answered.length === 0) return null;
-              return (
-                <div key={section.title} className="surface-card p-4">
-                  <h3 className="mb-3 flex items-center gap-2 text-xs font-semibold uppercase tracking-widest text-maroon-700 dark:text-maroon-300">
-                    <span aria-hidden className="h-2.5 w-1 bg-maroon-600" />
-                    {section.title}
-                  </h3>
-                  <dl className="flex flex-col gap-3">
-                    {answered.map((field) => (
-                      <div key={field.id} className="flex flex-col gap-1">
-                        <dt className="text-xs font-medium uppercase tracking-wider text-graphite-500">
-                          {field.label}
-                        </dt>
-                        <dd className="text-sm text-graphite-900">
-                          <PitAnswer
-                            field={field}
-                            value={{ ...pitValues, ...pitMedia }[field.id] ?? null}
-                          />
-                        </dd>
-                      </div>
-                    ))}
-                  </dl>
-                </div>
-              );
-            })}
+            <PitAnswerList
+              sections={pitSections}
+              values={{ ...pitValues, ...pitMedia }}
+            />
           </>
         )}
       </section>
@@ -407,35 +383,4 @@ function StatCard({
       <p className="text-xs text-graphite-500">{hint}</p>
     </div>
   );
-}
-
-function hasAnswer(field: FieldDef, values: FormValues): boolean {
-  const value = values[field.id];
-  if (value === null || value === undefined || value === "") return false;
-  if (Array.isArray(value)) return value.length > 0;
-  return true;
-}
-
-function PitAnswer({
-  field,
-  value,
-}: {
-  field: FieldDef;
-  value: FormValues[string];
-}) {
-  if (field.kind === "drawing" || field.kind === "photo") {
-    if (typeof value !== "string") return <>—</>;
-    return (
-      // Data-URL images from the media doc — next/image adds nothing here.
-      // eslint-disable-next-line @next/next/no-img-element
-      <img
-        src={value}
-        alt={field.label}
-        className="max-h-80 w-auto max-w-full rounded-md border border-graphite-200"
-      />
-    );
-  }
-  if (Array.isArray(value)) return <>{value.join(", ")}</>;
-  if (typeof value === "number") return <span className="stat">{value}</span>;
-  return <>{String(value)}</>;
 }

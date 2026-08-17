@@ -1,7 +1,14 @@
 "use client";
 
+import { PitAnswerList } from "@/components/PitAnswers";
 import { useAuth } from "@/lib/auth/AuthProvider";
-import { aggregateByTeam, type MatchSubmission } from "@/lib/aggregate";
+import {
+  aggregateByTeam,
+  counterFieldIds,
+  selectFieldIds,
+  type MatchSubmission,
+  type TeamAggregate,
+} from "@/lib/aggregate";
 import {
   buildTeamProfiles,
   missingPredictionFields,
@@ -14,10 +21,12 @@ import {
   type MatchReview,
   type TeamStrengthProfile,
 } from "@/lib/drive";
-import type { EventData } from "@/lib/eventData";
+import type { EventData, EventMatch } from "@/lib/eventData";
 import { db } from "@/lib/firebase/client";
+import type { FormSection, FormValues } from "@/lib/formSchema";
 import { MATCH_FIELD_LABELS } from "@/lib/matchScoutSchema";
 import { formatCountdown, matchLabel, msUntilMatch } from "@/lib/pitDashboard";
+import { PIT_MEDIA_COLLECTION } from "@/lib/pitScoutSchema";
 import { useScoutForms } from "@/lib/useScoutForms";
 import { collection, doc, onSnapshot, orderBy, query } from "firebase/firestore";
 import Link from "next/link";
@@ -25,7 +34,7 @@ import { useEffect, useMemo, useState } from "react";
 
 export default function DrivePage() {
   const { profile, team, dataTeamId } = useAuth();
-  const { matchSections } = useScoutForms();
+  const { matchSections, pitSections } = useScoutForms();
   const isAdmin = profile?.role === "admin";
 
   const [event, setEvent] = useState<EventData | null>(null);
@@ -87,15 +96,26 @@ export default function DrivePage() {
     return [...numbers].sort((a, b) => a - b);
   }, [event, myTeamNumber]);
 
+  const aggregates = useMemo(
+    () => aggregateByTeam(matchSections, submissions),
+    [matchSections, submissions],
+  );
+
   const profiles = useMemo(
     () =>
       buildTeamProfiles(
         matchSections,
-        aggregateByTeam(matchSections, submissions),
+        aggregates,
         SCORING_WEIGHTS,
         event?.teams ?? [],
       ),
-    [matchSections, submissions, event],
+    [matchSections, aggregates, event],
+  );
+
+  // Scouted averages per team, for the drawer that opens under a team number.
+  const aggregateByNumber = useMemo(
+    () => new Map(aggregates.map((a) => [a.team, a])),
+    [aggregates],
   );
 
   const predictions = useMemo<MatchPrediction[]>(() => {
@@ -228,6 +248,9 @@ export default function DrivePage() {
           isOwnTeam={isOwnTeam}
           profiles={profiles}
           fieldLabels={fieldLabels}
+          matchSections={matchSections}
+          pitSections={pitSections}
+          aggregates={aggregateByNumber}
         />
       ))}
 
@@ -247,6 +270,9 @@ export default function DrivePage() {
               key={review.prediction.match.key}
               review={review}
               focusTeamNumber={viewedTeamNumber}
+              matchSections={matchSections}
+              pitSections={pitSections}
+              aggregates={aggregateByNumber}
             />
           ))}
         </section>
@@ -255,14 +281,82 @@ export default function DrivePage() {
   );
 }
 
+/**
+ * Both alliances' predicted win chance. The favourite is drawn in its own
+ * colour and the underdog is muted, so which way the match leans reads at a
+ * glance from the drive station. An exact 50/50 has no favourite.
+ */
+function WinChance({ redProbability }: { redProbability: number }) {
+  const redPercent = Math.round(redProbability * 100);
+  const bluePercent = 100 - redPercent;
+  const favourite =
+    redPercent === bluePercent ? null : redPercent > bluePercent ? "red" : "blue";
+
+  return (
+    <div className="flex flex-col gap-1.5">
+      <div className="flex items-baseline justify-between gap-3">
+        <p
+          className={`stat text-lg font-bold ${
+            favourite === "red"
+              ? "text-maroon-700 dark:text-maroon-300"
+              : "text-graphite-400"
+          }`}
+        >
+          {redPercent}%
+          <span className="ml-1.5 font-sans text-xs font-semibold uppercase tracking-widest">
+            red
+          </span>
+        </p>
+        <p
+          className={`stat text-lg font-bold ${
+            favourite === "blue"
+              ? "text-sky-700 dark:text-sky-300"
+              : "text-graphite-400"
+          }`}
+        >
+          <span className="mr-1.5 font-sans text-xs font-semibold uppercase tracking-widest">
+            blue
+          </span>
+          {bluePercent}%
+        </p>
+      </div>
+      <div
+        className="flex h-2 overflow-hidden rounded-full bg-graphite-100"
+        role="img"
+        aria-label={`Predicted win chance: red ${redPercent} percent, blue ${bluePercent} percent`}
+      >
+        <div
+          className={
+            favourite === "red" ? "h-full bg-maroon-600" : "h-full bg-graphite-300"
+          }
+          style={{ width: `${redPercent}%` }}
+        />
+        <div
+          className={
+            favourite === "blue" ? "h-full bg-sky-700" : "h-full bg-graphite-300"
+          }
+          style={{ width: `${bluePercent}%` }}
+        />
+      </div>
+    </div>
+  );
+}
+
 /** One finished match: predicted win chance vs. what actually happened. */
 function PastMatchRow({
   review,
   focusTeamNumber,
+  matchSections,
+  pitSections,
+  aggregates,
 }: {
   review: MatchReview;
   focusTeamNumber: number;
+  matchSections: readonly FormSection[];
+  pitSections: readonly FormSection[];
+  aggregates: ReadonlyMap<string, TeamAggregate>;
 }) {
+  const [openTeam, setOpenTeam] = useState<number | null>(null);
   const { prediction, winner, called } = review;
   const { match, red, blue, redWinProbability } = prediction;
   const theyAreRed = match.red.includes(focusTeamNumber);
@@ -275,72 +369,140 @@ function PastMatchRow({
   const theyWon = winner === (theyAreRed ? "red" : "blue");
 
   return (
-    <div className="surface-card flex flex-wrap items-center justify-between gap-x-4 gap-y-2 px-4 py-3">
-      <div className="flex items-baseline gap-2.5">
-        <span className="stat text-sm font-semibold text-graphite-900">
-          {matchLabel(match)}
-        </span>
-        {winner !== null && (
-          <span
-            className={
-              winner === "tie"
-                ? "badge bg-graphite-100 text-graphite-500"
-                : theyWon
-                  ? "badge-success badge"
-                  : "badge-error badge"
-            }
-          >
-            {winner === "tie" ? "Tie" : theyWon ? "Won" : "Lost"}
+    <div className="surface-card flex flex-col gap-2 px-4 py-3">
+      <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
+        <div className="flex items-baseline gap-2.5">
+          <span className="stat text-sm font-semibold text-graphite-900">
+            {matchLabel(match)}
           </span>
-        )}
+          {winner !== null && (
+            <span
+              className={
+                winner === "tie"
+                  ? "badge bg-graphite-100 text-graphite-500"
+                  : theyWon
+                    ? "badge-success badge"
+                    : "badge-error badge"
+              }
+            >
+              {winner === "tie" ? "Tie" : theyWon ? "Won" : "Lost"}
+            </span>
+          )}
+        </div>
+
+        <div className="flex items-baseline gap-4">
+          <p className="stat text-sm text-graphite-500">
+            <span className="text-maroon-700 dark:text-maroon-300">
+              {match.redScore ?? "—"}
+            </span>
+            {" – "}
+            <span className="text-sky-700 dark:text-sky-300">
+              {match.blueScore ?? "—"}
+            </span>
+            <span className="ml-1.5 font-sans text-xs uppercase tracking-widest">
+              actual
+            </span>
+          </p>
+          <p className="stat text-sm text-graphite-500">
+            <span className="text-maroon-700 dark:text-maroon-300">
+              {red.points !== null ? red.points.toFixed(0) : "—"}
+            </span>
+            {" – "}
+            <span className="text-sky-700 dark:text-sky-300">
+              {blue.points !== null ? blue.points.toFixed(0) : "—"}
+            </span>
+            <span className="ml-1.5 font-sans text-xs uppercase tracking-widest">
+              predicted
+            </span>
+          </p>
+          {ourProbability !== null && (
+            <p
+              className="stat text-sm font-semibold text-graphite-900"
+              title={`Predicted ${Math.round(ourProbability * 100)}% win chance for Team ${focusTeamNumber}`}
+            >
+              {Math.round(ourProbability * 100)}%
+              {called !== null && (
+                <span
+                  aria-label={called ? "Predictor called it" : "Predictor missed"}
+                  className={`ml-1.5 ${
+                    called
+                      ? "text-green-700 dark:text-green-400"
+                      : "text-red-600 dark:text-red-400"
+                  }`}
+                >
+                  {called ? "✓" : "✗"}
+                </span>
+              )}
+            </p>
+          )}
+        </div>
       </div>
 
-      <div className="flex items-baseline gap-4">
-        <p className="stat text-sm text-graphite-500">
-          <span className="text-maroon-700 dark:text-maroon-300">
-            {match.redScore ?? "—"}
-          </span>
-          {" – "}
-          <span className="text-sky-700 dark:text-sky-300">
-            {match.blueScore ?? "—"}
-          </span>
-          <span className="ml-1.5 font-sans text-xs uppercase tracking-widest">
-            actual
-          </span>
-        </p>
-        <p className="stat text-sm text-graphite-500">
-          <span className="text-maroon-700 dark:text-maroon-300">
-            {red.points !== null ? red.points.toFixed(0) : "—"}
-          </span>
-          {" – "}
-          <span className="text-sky-700 dark:text-sky-300">
-            {blue.points !== null ? blue.points.toFixed(0) : "—"}
-          </span>
-          <span className="ml-1.5 font-sans text-xs uppercase tracking-widest">
-            predicted
-          </span>
-        </p>
-        {ourProbability !== null && (
-          <p
-            className="stat text-sm font-semibold text-graphite-900"
-            title={`Predicted ${Math.round(ourProbability * 100)}% win chance for Team ${focusTeamNumber}`}
-          >
-            {Math.round(ourProbability * 100)}%
-            {called !== null && (
-              <span
-                aria-label={called ? "Predictor called it" : "Predictor missed"}
-                className={`ml-1.5 ${
-                  called
-                    ? "text-green-700 dark:text-green-400"
-                    : "text-red-600 dark:text-red-400"
-                }`}
-              >
-                {called ? "✓" : "✗"}
-              </span>
-            )}
-          </p>
-        )}
-      </div>
+      <Lineup
+        match={match}
+        focusTeamNumber={focusTeamNumber}
+        openTeam={openTeam}
+        onToggle={(teamNumber) =>
+          setOpenTeam((open) => (open === teamNumber ? null : teamNumber))
+        }
+      />
+
+      {openTeam !== null && (
+        <TeamDrawer
+          teamNumber={openTeam}
+          matchSections={matchSections}
+          pitSections={pitSections}
+          aggregate={aggregates.get(String(openTeam))}
+        />
+      )}
+    </div>
+  );
+}
+
+/**
+ * Both alliances' team numbers on one line, each opening that robot's data.
+ * A played match is where the drive team asks "who was that?", so the numbers
+ * are the point of the row — not decoration on it.
+ */
+function Lineup({
+  match,
+  focusTeamNumber,
+  openTeam,
+  onToggle,
+}: {
+  match: EventMatch;
+  focusTeamNumber: number;
+  openTeam: number | null;
+  onToggle: (teamNumber: number) => void;
+}) {
+  const side = (teams: readonly number[], alliance: "red" | "blue") =>
+    teams.map((teamNumber) => {
+      const isFocus = teamNumber === focusTeamNumber;
+      const isOpen = teamNumber === openTeam;
+      return (
+        <button
+          key={teamNumber}
+          type="button"
+          aria-expanded={isOpen}
+          onClick={() => onToggle(teamNumber)}
+          className={`stat rounded px-1.5 py-0.5 text-xs font-semibold transition ${
+            isOpen ? "ring-1 ring-graphite-300" : ""
+          } ${
+            alliance === "red"
+              ? "text-maroon-700 hover:bg-maroon-50 dark:text-maroon-300"
+              : "text-sky-700 hover:bg-sky-50 dark:text-sky-300 dark:hover:bg-sky-950/40"
+          } ${isFocus ? "underline underline-offset-2" : ""}`}
+        >
+          {teamNumber}
+        </button>
+      );
+    });
+
+  return (
+    <div className="flex flex-wrap items-center gap-x-1 gap-y-1 border-t border-graphite-100 pt-2">
+      {side(match.red, "red")}
+      <span className="px-1 text-xs text-graphite-400">vs</span>
+      {side(match.blue, "blue")}
     </div>
   );
 }
@@ -353,6 +515,9 @@ function MatchCard({
   isOwnTeam,
   profiles,
   fieldLabels,
+  matchSections,
+  pitSections,
+  aggregates,
 }: {
   prediction: MatchPrediction;
   isNext: boolean;
@@ -363,16 +528,12 @@ function MatchCard({
   isOwnTeam: boolean;
   profiles: ReadonlyMap<number, TeamStrengthProfile>;
   fieldLabels: Record<string, string>;
+  matchSections: readonly FormSection[];
+  pitSections: readonly FormSection[];
+  aggregates: ReadonlyMap<string, TeamAggregate>;
 }) {
   const { match, red, blue, redWinProbability } = prediction;
   const untilMs = msUntilMatch(match, now);
-  const theyAreRed = match.red.includes(focusTeamNumber);
-  const ourProbability =
-    redWinProbability === null
-      ? null
-      : theyAreRed
-        ? redWinProbability
-        : 1 - redWinProbability;
 
   return (
     <section
@@ -396,25 +557,8 @@ function MatchCard({
         </p>
       </div>
 
-      {ourProbability !== null && (
-        <div className="flex items-center gap-3">
-          <div
-            className="h-2 flex-1 overflow-hidden rounded-full bg-graphite-100"
-            role="img"
-            aria-label={`Estimated win chance ${Math.round(ourProbability * 100)}%`}
-          >
-            <div
-              className="h-full bg-maroon-600"
-              style={{ width: `${Math.round(ourProbability * 100)}%` }}
-            />
-          </div>
-          <p className="stat text-sm font-semibold text-graphite-900">
-            {Math.round(ourProbability * 100)}%
-          </p>
-          <p className="text-xs text-graphite-500">
-            {isOwnTeam ? "our" : `${focusTeamNumber}'s`} win chance
-          </p>
-        </div>
+      {redWinProbability !== null && (
+        <WinChance redProbability={redWinProbability} />
       )}
 
       <div className="grid gap-4 md:grid-cols-2">
@@ -455,6 +599,9 @@ function MatchCard({
                   isUs={teamNumber === focusTeamNumber}
                   profile={profiles.get(teamNumber)}
                   fieldLabels={fieldLabels}
+                  matchSections={matchSections}
+                  pitSections={pitSections}
+                  aggregate={aggregates.get(String(teamNumber))}
                 />
               ))}
             </div>
@@ -470,23 +617,41 @@ function TeamRow({
   isUs,
   profile,
   fieldLabels,
+  matchSections,
+  pitSections,
+  aggregate,
 }: {
   teamNumber: number;
   isUs: boolean;
   profile: TeamStrengthProfile | undefined;
   fieldLabels: Record<string, string>;
+  matchSections: readonly FormSection[];
+  pitSections: readonly FormSection[];
+  aggregate: TeamAggregate | undefined;
 }) {
+  const [open, setOpen] = useState(false);
+
   return (
     <div className="flex flex-col gap-1 border-t border-graphite-100 pt-2 first:border-t-0 first:pt-0">
       <div className="flex items-center justify-between gap-2">
-        <Link
-          href={`/teams/${teamNumber}`}
-          className={`stat text-sm font-semibold underline-offset-2 hover:underline ${
+        <button
+          type="button"
+          onClick={() => setOpen((wasOpen) => !wasOpen)}
+          aria-expanded={open}
+          className={`stat flex items-center gap-1.5 rounded px-1 py-0.5 -ml-1 text-sm font-semibold transition hover:bg-graphite-100 ${
             isUs ? "text-maroon-700 dark:text-maroon-300" : "text-graphite-900"
           }`}
         >
+          <span
+            aria-hidden
+            className={`font-sans text-[0.65rem] text-graphite-400 transition-transform ${
+              open ? "rotate-90" : ""
+            }`}
+          >
+            ▶
+          </span>
           {teamNumber}
-        </Link>
+        </button>
         <p className="stat text-xs text-graphite-500">
           {profile?.points != null ? (
             <>
@@ -524,6 +689,146 @@ function TeamRow({
           ))}
         </div>
       )}
+      {open && (
+        <TeamDrawer
+          teamNumber={teamNumber}
+          matchSections={matchSections}
+          pitSections={pitSections}
+          aggregate={aggregate}
+        />
+      )}
+    </div>
+  );
+}
+
+/**
+ * What we know about one robot, opened under its number in a match card. Pit
+ * answers are fetched only once a drawer is opened — a pit report carries
+ * photos and drawings as data URLs, and pulling every team’s at once would
+ * make the dashboard expensive to load on venue wifi.
+ */
+function TeamDrawer({
+  teamNumber,
+  matchSections,
+  pitSections,
+  aggregate,
+}: {
+  teamNumber: number;
+  matchSections: readonly FormSection[];
+  pitSections: readonly FormSection[];
+  aggregate: TeamAggregate | undefined;
+}) {
+  const { dataTeamId } = useAuth();
+  const [pit, setPit] = useState<{
+    values: FormValues;
+    scoutName: string | null;
+  } | null>(null);
+  const [media, setMedia] = useState<FormValues>({});
+  const [pitLoaded, setPitLoaded] = useState(false);
+
+  useEffect(() => {
+    if (!dataTeamId) return;
+    const teamId = String(teamNumber);
+    const unsubPit = onSnapshot(
+      doc(db, "teams", dataTeamId, "pitScouting", teamId),
+      (snapshot) => {
+        const data = snapshot.data();
+        setPit(
+          data
+            ? {
+                values: (data.values as FormValues | undefined) ?? {},
+                scoutName: (data.scoutName as string | undefined) ?? null,
+              }
+            : null,
+        );
+        setPitLoaded(true);
+      },
+    );
+    const unsubMedia = onSnapshot(
+      doc(db, "teams", dataTeamId, PIT_MEDIA_COLLECTION, teamId),
+      (snapshot) =>
+        setMedia((snapshot.data()?.values as FormValues | undefined) ?? {}),
+    );
+    return () => {
+      unsubPit();
+      unsubMedia();
+    };
+  }, [dataTeamId, teamNumber]);
+
+  // Only the fields this team actually has numbers for — a drawer full of
+  // zeroes tells the drive team nothing.
+  const counters = counterFieldIds(matchSections)
+    .map((id) => ({ id, avg: aggregate?.averages[id] ?? 0 }))
+    .filter((entry) => entry.avg > 0);
+  const modes = selectFieldIds(matchSections)
+    .map((id) => ({ id, mode: aggregate?.modes[id] ?? null }))
+    .filter((entry): entry is { id: string; mode: string } => !!entry.mode);
+
+  const pitValues = { ...(pit?.values ?? {}), ...media };
+  const hasPit = Object.keys(pitValues).length > 0;
+
+  return (
+    <div className="mt-1.5 flex flex-col gap-3 rounded-md border border-graphite-200 bg-graphite-50 p-3 dark:bg-graphite-900/40">
+      <section className="flex flex-col gap-2">
+        <h4 className="text-xs font-semibold uppercase tracking-widest text-graphite-500">
+          Scouted — {aggregate ? `${aggregate.matches} match${aggregate.matches === 1 ? "" : "es"}` : "no matches yet"}
+        </h4>
+        {counters.length === 0 && modes.length === 0 ? (
+          <p className="text-xs text-graphite-500">
+            Nobody has match scouted this robot yet.
+          </p>
+        ) : (
+          <dl className="flex flex-col gap-1">
+            {counters.map((entry) => (
+              <div
+                key={entry.id}
+                className="flex items-baseline justify-between gap-3"
+              >
+                <dt className="text-xs text-graphite-500">
+                  {MATCH_FIELD_LABELS[entry.id] ?? entry.id}
+                </dt>
+                <dd className="stat text-sm font-semibold text-graphite-900">
+                  {entry.avg.toFixed(1)}
+                  <span className="ml-1 font-sans text-xs font-normal text-graphite-400">
+                    /match
+                  </span>
+                </dd>
+              </div>
+            ))}
+            {modes.map((entry) => (
+              <div
+                key={entry.id}
+                className="flex items-baseline justify-between gap-3"
+              >
+                <dt className="text-xs text-graphite-500">
+                  {MATCH_FIELD_LABELS[entry.id] ?? entry.id}
+                </dt>
+                <dd className="text-sm text-graphite-900">{entry.mode}</dd>
+              </div>
+            ))}
+          </dl>
+        )}
+      </section>
+
+      <section className="flex flex-col gap-2 border-t border-graphite-200 pt-2.5">
+        <h4 className="text-xs font-semibold uppercase tracking-widest text-graphite-500">
+          Pit scouting
+          {pit?.scoutName ? (
+            <span className="ml-1.5 font-sans normal-case tracking-normal text-graphite-400">
+              by {pit.scoutName}
+            </span>
+          ) : null}
+        </h4>
+        {!pitLoaded ? (
+          <p className="text-xs text-graphite-500">Loading…</p>
+        ) : hasPit ? (
+          <PitAnswerList sections={pitSections} values={pitValues} dense />
+        ) : (
+          <p className="text-xs text-graphite-500">
+            This robot hasn’t been pit scouted yet.
+          </p>
+        )}
+      </section>
     </div>
   );
 }
