@@ -2,30 +2,45 @@
 
 import { useEffect, useRef, useState } from "react";
 
-// Freehand sketch pad for auto paths. Scouts draw on a field backdrop with a
-// finger or a stylus; the result is flattened to a PNG data URL so it stores
-// and renders anywhere a plain field value does.
+// Freehand sketch pad for auto paths. Scouts draw over a photo of the field
+// with a finger or a stylus; the result is flattened to an image data URL so
+// it stores and renders anywhere a plain field value does.
 
-/** Internal canvas resolution — the element itself scales to its container. */
+/** The field photo scouts draw on, served from `public/`. Same-origin and
+ *  precached by the service worker, so the pad still works with no signal. */
+const FIELD_MAP_SRC = "/field-map.png";
+
+/** Internal canvas resolution — the element itself scales to its container.
+ *  Matches the field map's 600×315 exactly (×1.6) so the photo neither
+ *  stretches nor letterboxes; the CSS aspect ratio below must track this. */
 const CANVAS_WIDTH = 960;
-const CANVAS_HEIGHT = 540;
+const CANVAS_HEIGHT = 504;
 
 /** A sketch shares the submission doc with every other answer, so it gets a
- *  budget well under Firestore's 1 MB cap. Line art is nowhere near this. */
+ *  budget well under Firestore's 1 MB cap. */
 const MAX_DRAWING_BYTES = 300_000;
 
 const TOO_BIG_MESSAGE =
   "This sketch got too detailed to save — undo a few strokes and try again.";
 
-/** PNG keeps line art crisp; the JPEG pass is a fallback for a sketch dense
- *  enough to blow the budget. Null means neither fits — the caller must not
- *  emit, or the save would bounce off Firestore's doc limit. */
+/** The flattened sketch includes the field photo behind it, so JPEG is the
+ *  right format — the same frame as a lossless PNG runs past 500 KB encoded,
+ *  well over the budget. Quality drops one step before giving up. Null means
+ *  nothing fit, and the caller must not emit or the save would bounce off
+ *  Firestore's doc limit. */
 function encodeCanvas(canvas: HTMLCanvasElement): string | null {
-  const png = canvas.toDataURL("image/png");
-  if (png.length <= MAX_DRAWING_BYTES) return png;
-  const jpeg = canvas.toDataURL("image/jpeg", 0.8);
-  return jpeg.length <= MAX_DRAWING_BYTES ? jpeg : null;
+  for (const quality of [0.85, 0.65]) {
+    const jpeg = canvas.toDataURL("image/jpeg", quality);
+    if (jpeg.length <= MAX_DRAWING_BYTES) return jpeg;
+  }
+  return null;
 }
+
+/** Outline painted under every stroke so pen colors survive the field photo —
+ *  see `redraw`. Near-white rather than white so it reads as an edge, not as
+ *  a second stroke. */
+const HALO_COLOR = "#f8fafc";
+const HALO_WIDTH = 4;
 
 const PEN_COLORS = [
   { name: "Red alliance", value: "#9f1239" },
@@ -48,7 +63,7 @@ interface DrawingPadProps {
   label: string;
   hint?: string;
   required?: boolean;
-  /** PNG data URL, or null when nothing has been drawn yet. */
+  /** Flattened image data URL, or null when nothing has been drawn yet. */
   value: string | null;
   onChange: (value: string | null) => void;
 }
@@ -65,6 +80,10 @@ export function DrawingPad({
   // from a saved submission comes back as a flat image (below), so undo only
   // ever removes marks the scout just made, never their earlier saved work.
   const [strokes, setStrokes] = useState<Stroke[]>([]);
+  // The field photo every sketch is drawn over. Null until it decodes (or if
+  // it never does) — `redraw` falls back to a drawn field so the pad is never
+  // a blank white box and a stroke never flattens onto nothing.
+  const [field, setField] = useState<HTMLImageElement | null>(null);
   const [base, setBase] = useState<HTMLImageElement | null>(null);
   const [baseSrc, setBaseSrc] = useState<string | null>(value);
   const [color, setColor] = useState<string>(PEN_COLORS[0].value);
@@ -93,6 +112,18 @@ export function DrawingPad({
   }
 
   useEffect(() => {
+    let cancelled = false;
+    const img = new Image();
+    img.onload = () => {
+      if (!cancelled) setField(img);
+    };
+    img.src = FIELD_MAP_SRC;
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
     if (!baseSrc) return;
     let cancelled = false;
     const img = new Image();
@@ -112,8 +143,8 @@ export function DrawingPad({
   }, [baseSrc]);
 
   useEffect(() => {
-    redraw(canvasRef.current, base, strokes);
-  }, [base, strokes]);
+    redraw(canvasRef.current, field, base, strokes);
+  }, [field, base, strokes]);
 
   function pointFrom(event: React.PointerEvent<HTMLCanvasElement>): Point {
     const canvas = event.currentTarget;
@@ -165,7 +196,7 @@ export function DrawingPad({
     if (!canvas) return;
     // Paint the reduced set before reading the canvas back — state updates
     // land after this handler, so the effect hasn't repainted yet.
-    redraw(canvas, base, next);
+    redraw(canvas, field, base, next);
     let dataUrl: string | null = null;
     if (next.length > 0 || base) {
       dataUrl = encodeCanvas(canvas);
@@ -222,7 +253,7 @@ export function DrawingPad({
         // touch-action:none keeps a drag from scrolling the page mid-stroke.
         // The aspect ratio must match the bitmap above or strokes land off
         // the fingertip; pointer coords are mapped through the rendered box.
-        className="aspect-[16/9] h-auto w-full touch-none rounded-md border border-graphite-200 bg-surface"
+        className="aspect-[40/21] h-auto w-full touch-none rounded-md border border-graphite-200 bg-surface"
       />
 
       <div className="flex flex-wrap items-center gap-2">
@@ -271,6 +302,7 @@ export function DrawingPad({
 /** Field backdrop + every stroke, repainted from scratch. */
 function redraw(
   canvas: HTMLCanvasElement | null,
+  field: HTMLImageElement | null,
   base: HTMLImageElement | null,
   strokes: readonly Stroke[],
 ): void {
@@ -278,18 +310,18 @@ function redraw(
   if (!canvas || !ctx) return;
 
   ctx.clearRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
-  if (base) {
-    ctx.drawImage(base, 0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
-  } else {
-    drawFieldBackdrop(ctx);
-  }
+  if (field) ctx.drawImage(field, 0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+  else drawFieldBackdrop(ctx);
+  // A saved sketch is a flattened frame that already has its own field baked
+  // in, so it lands on top and simply replaces the one above. Painting the
+  // field first is what keeps a still-decoding photo from leaving the canvas
+  // transparent — JPEG would flatten that to black.
+  if (base) ctx.drawImage(base, 0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
 
   ctx.lineCap = "round";
   ctx.lineJoin = "round";
   for (const stroke of strokes) {
     if (stroke.points.length === 0) continue;
-    ctx.strokeStyle = stroke.color;
-    ctx.lineWidth = stroke.width;
     ctx.beginPath();
     ctx.moveTo(stroke.points[0].x, stroke.points[0].y);
     for (const point of stroke.points.slice(1)) ctx.lineTo(point.x, point.y);
@@ -297,14 +329,25 @@ function redraw(
     if (stroke.points.length === 1) {
       ctx.lineTo(stroke.points[0].x + 0.1, stroke.points[0].y);
     }
+    // Halo first, pen on top. The field photo has a saturated red zone at one
+    // end and a blue one at the other, so an alliance-colored path drawn on
+    // its own alliance's carpet would all but vanish; the light outline keeps
+    // every stroke readable over any part of the field.
+    ctx.strokeStyle = HALO_COLOR;
+    ctx.lineWidth = stroke.width + HALO_WIDTH;
+    ctx.stroke();
+    ctx.strokeStyle = stroke.color;
+    ctx.lineWidth = stroke.width;
     ctx.stroke();
   }
 }
 
 /**
- * A generic FRC-shaped field: alliance zones at either end, a center line, and
- * a light grid to judge distances against. Deliberately game-agnostic — the
- * game changes every January and this shouldn't need a redraw with it.
+ * Fallback for the frames before the field photo decodes, and for the case
+ * where it never does: a generic FRC-shaped field with alliance zones at
+ * either end, a center line, and a light grid to judge distances against.
+ * Deliberately game-agnostic, unlike the photo — a scout who starts drawing
+ * against this still gets a usable field rather than a blank rectangle.
  */
 function drawFieldBackdrop(ctx: CanvasRenderingContext2D): void {
   ctx.fillStyle = "#f8fafc";

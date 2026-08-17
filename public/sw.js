@@ -8,7 +8,10 @@
 //   - cross-origin:       untouched — Firestore/Auth manage their own
 //                         offline queue; intercepting them would break it
 const CACHE_NAME = "scout-shell-v2";
-const PRECACHE_URLS = ["/", "/home"];
+// The field map is precached rather than left to the network-first path: pit
+// scouting happens in a shop or a venue basement, and a scout who never opened
+// the form while online would otherwise get the fallback field instead.
+const PRECACHE_URLS = ["/", "/home", "/field-map.png"];
 
 self.addEventListener("install", (event) => {
   event.waitUntil(
