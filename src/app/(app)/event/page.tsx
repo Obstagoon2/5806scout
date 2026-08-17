@@ -535,8 +535,8 @@ function NexusPitMapCard({
           <NexusPitMap map={map} highlightTeam={myTeam || null} />
           <p className="text-xs text-graphite-400">
             {pitCount > 0
-              ? `${pitCount} pits assigned. `
-              : "Pit assignments not published yet. "}
+              ? `${pitCount} teams assigned to pits. `
+              : "Teams aren't assigned to pits yet — boxes show pit addresses until the event publishes them. "}
             Map data from{" "}
             <a
               href="https://frc.nexus"

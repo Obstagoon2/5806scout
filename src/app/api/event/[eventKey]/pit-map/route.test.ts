@@ -94,6 +94,22 @@ describe("GET /api/event/[eventKey]/pit-map", () => {
     expect(body.addresses).toEqual({ "5806": "A1" });
   });
 
+  it('treats the live API\'s "No pits." string as no addresses', async () => {
+    mockGetServerConfig.mockReturnValue(serverConfig("nexus-key"));
+    // Documented as {} but actually returned as a bare string at 200. Passing
+    // it through would report 8 assigned pits (the string's length).
+    mockNexus(jsonResponse(MAP_PAYLOAD), jsonResponse("No pits."));
+
+    const body = await (
+      await GET(new Request("http://test"), params("2026test"))
+    ).json();
+
+    expect(body.addresses).toEqual({});
+    expect(body.map.pits[0].label).toBeNull();
+    // The address survives as the box id so the map still labels the pit.
+    expect(body.map.pits[0].id).toBe("A1");
+  });
+
   it("returns an empty result when Nexus has nothing for the event", async () => {
     mockGetServerConfig.mockReturnValue(serverConfig("nexus-key"));
     mockNexus(jsonResponse({}, 404), jsonResponse({}, 404));

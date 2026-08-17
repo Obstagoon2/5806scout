@@ -1,4 +1,8 @@
-import { mapPitMap, type NexusPitAddresses, type NexusPitMapPayload } from "@/lib/nexus";
+import {
+  mapPitMap,
+  normalizePitAddresses,
+  type NexusPitMapPayload,
+} from "@/lib/nexus";
 import { NEXUS_NOT_FOUND, nexusFetch } from "@/lib/nexusApi";
 
 // Pit map for the Event tab. Nexus publishes both the drawn map
@@ -19,7 +23,7 @@ export async function GET(
 
   const [map, addresses] = await Promise.all([
     nexusFetch<NexusPitMapPayload>(`/event/${eventKey}/map`),
-    nexusFetch<NexusPitAddresses>(`/event/${eventKey}/pits`),
+    nexusFetch<unknown>(`/event/${eventKey}/pits`),
   ]);
 
   // Addresses without a drawn map still answer "which pit is team X in?", so
@@ -36,7 +40,11 @@ export async function GET(
     return Response.json({ error: map.message }, { status: map.status ?? 502 });
   }
 
-  const addressDirectory = addresses.ok ? addresses.data : {};
+  // Normalized here, not just in the mapper: the raw payload also goes to the
+  // client, which counts it to report how many pits are assigned.
+  const addressDirectory = addresses.ok
+    ? normalizePitAddresses(addresses.data)
+    : {};
 
   return Response.json({
     map: map.ok ? mapPitMap(map.data, addressDirectory) : null,

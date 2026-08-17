@@ -28,7 +28,14 @@ function fontSize(box: PitMapBox, ratio: number): number {
   return Math.max(4, Math.min(box.width, box.height) * ratio);
 }
 
+/**
+ * A pit box carries two different things a scout needs: which team is in it,
+ * and the address posted on it that gets you there. The team number is the
+ * headline; the address sits under it, and stands alone as the only label
+ * when the event hasn't assigned teams to pits yet.
+ */
 function Pit({ pit, mine }: { pit: PitMapBox; mine: boolean }) {
+  const team = pit.label;
   return (
     <g transform={transform(pit)}>
       <rect
@@ -44,16 +51,39 @@ function Pit({ pit, mine }: { pit: PitMapBox; mine: boolean }) {
         }
         strokeWidth={1}
       />
-      {pit.label && (
+      {team ? (
+        <>
+          <text
+            x={pit.x}
+            y={pit.y - pit.height * 0.08}
+            textAnchor="middle"
+            dominantBaseline="central"
+            fontSize={fontSize(pit, 0.34)}
+            className={`stat font-semibold ${mine ? "fill-white" : "fill-graphite-800"}`}
+          >
+            {team}
+          </text>
+          <text
+            x={pit.x}
+            y={pit.y + pit.height * 0.24}
+            textAnchor="middle"
+            dominantBaseline="central"
+            fontSize={fontSize(pit, 0.18)}
+            className={`stat ${mine ? "fill-maroon-100" : "fill-graphite-400"}`}
+          >
+            {pit.id}
+          </text>
+        </>
+      ) : (
         <text
           x={pit.x}
           y={pit.y}
           textAnchor="middle"
           dominantBaseline="central"
-          fontSize={fontSize(pit, 0.34)}
-          className={`stat font-semibold ${mine ? "fill-white" : "fill-graphite-700"}`}
+          fontSize={fontSize(pit, 0.26)}
+          className={`stat ${mine ? "fill-white" : "fill-graphite-500"}`}
         >
-          {pit.label}
+          {pit.id}
         </text>
       )}
     </g>

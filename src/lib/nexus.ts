@@ -36,10 +36,34 @@ export interface NexusPitMapPayload {
 /** Keyed by team number ("5806" -> "A12"). */
 export type NexusPitAddresses = Record<string, string>;
 
+/**
+ * Coerce the /pits payload into a team -> address map.
+ *
+ * The spec says an event with nothing assigned returns `{}`, but the live API
+ * answers 200 with the bare string `"No pits."`. Left alone, `Object.entries`
+ * on that yields character-index pairs, which quietly becomes a nonsense
+ * address directory and a pit count of 8. Anything that isn't a plain object
+ * of string values is treated as "no addresses published".
+ */
+export function normalizePitAddresses(payload: unknown): NexusPitAddresses {
+  if (typeof payload !== "object" || payload === null || Array.isArray(payload)) {
+    return {};
+  }
+  const addresses: NexusPitAddresses = {};
+  for (const [team, address] of Object.entries(payload)) {
+    if (typeof address === "string" && address !== "") addresses[team] = address;
+  }
+  return addresses;
+}
+
 // --- Mapped shapes the client renders ---
 
 export interface PitMapBox {
-  /** Pit address for pits, element id otherwise — unique within its list. */
+  /**
+   * Pit address ("A1") for pits, element id otherwise — unique within its
+   * list. For a pit this is the wayfinding label an event actually posts on
+   * the box, so the UI shows it even when no team is assigned to it yet.
+   */
   id: string;
   /** Center of the box, in map units. */
   x: number;
@@ -106,8 +130,10 @@ export function mapPitMap(
   addresses: NexusPitAddresses = {},
 ): PitMap {
   const teamByAddress = new Map<string, string>();
-  for (const [team, address] of Object.entries(addresses)) {
-    if (address) teamByAddress.set(address, team);
+  for (const [team, address] of Object.entries(
+    normalizePitAddresses(addresses),
+  )) {
+    teamByAddress.set(address, team);
   }
 
   return {

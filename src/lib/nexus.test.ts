@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   mapPitMap,
   mapQueueMatch,
+  normalizePitAddresses,
   pitAddressFor,
   selectQueueStatus,
   type NexusEventStatusPayload,
@@ -71,6 +72,23 @@ describe("mapPitMap", () => {
     expect(map.pits.find((pit) => pit.id === "A1")?.label).toBe("5806");
   });
 
+  it("leaves pits unlabelled when the address payload is the \"No pits.\" string", () => {
+    const map = mapPitMap(
+      payload,
+      "No pits." as unknown as Record<string, string>,
+    );
+
+    // A2 has no team on the map and no directory to fall back on.
+    expect(map.pits.find((pit) => pit.id === "A2")?.label).toBeNull();
+    // The map's own assignment still stands.
+    expect(map.pits.find((pit) => pit.id === "A1")?.label).toBe("5806");
+  });
+
+  it("keeps the pit address as the box id so it can be shown when unassigned", () => {
+    const map = mapPitMap(payload);
+    expect(map.pits.map((pit) => pit.id)).toEqual(["A1", "A2"]);
+  });
+
   it("survives a payload with nothing but a size", () => {
     const map = mapPitMap({ size: { x: 10, y: 10 } });
 
@@ -83,6 +101,35 @@ describe("mapPitMap", () => {
       walls: [],
       arrows: [],
     });
+  });
+});
+
+describe("normalizePitAddresses", () => {
+  it("passes a real directory through", () => {
+    expect(normalizePitAddresses({ "100": "A1", "200": "B2" })).toEqual({
+      "100": "A1",
+      "200": "B2",
+    });
+  });
+
+  it('rejects the live API\'s "No pits." string', () => {
+    // The spec says an empty event returns {}, but the API answers 200 with
+    // this bare string. Object.entries on it yields character-index pairs —
+    // a nonsense directory and a pit count of 8.
+    expect(normalizePitAddresses("No pits.")).toEqual({});
+  });
+
+  it("rejects other non-object payloads", () => {
+    expect(normalizePitAddresses(null)).toEqual({});
+    expect(normalizePitAddresses(undefined)).toEqual({});
+    expect(normalizePitAddresses(["A1"])).toEqual({});
+    expect(normalizePitAddresses(42)).toEqual({});
+  });
+
+  it("drops entries whose address isn't a usable string", () => {
+    expect(
+      normalizePitAddresses({ "100": "A1", "200": null, "300": "", "400": 7 }),
+    ).toEqual({ "100": "A1" });
   });
 });
 
