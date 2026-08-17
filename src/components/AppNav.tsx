@@ -1,7 +1,7 @@
 "use client";
 
 import { useAuth } from "@/lib/auth/AuthProvider";
-import { NAV_ITEMS, type NavItem } from "@/lib/nav";
+import { isNavItemActive, NAV_ITEMS, type NavItem } from "@/lib/nav";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
@@ -18,7 +18,7 @@ export function DesktopTabs() {
   return (
     <nav className="hidden border-b border-graphite-200 bg-surface px-6 md:flex">
       {items.map((item) => {
-        const active = pathname.startsWith(item.href);
+        const active = isNavItemActive(pathname, item.href);
         return (
           <Link
             key={item.href}
@@ -180,7 +180,7 @@ export function MobileMenu() {
 
             <nav className="flex-1 overflow-y-auto p-2">
               {links.map((item) => {
-                const active = pathname.startsWith(item.href);
+                const active = isNavItemActive(pathname, item.href);
                 return (
                   <Link
                     key={item.href}

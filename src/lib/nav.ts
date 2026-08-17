@@ -5,6 +5,15 @@ export interface NavItem {
   adminOnly?: boolean;
 }
 
+/**
+ * Whether a nav item is the one the current path belongs to. Matches on
+ * segment boundaries, not a bare prefix — `/teams/254` (a team breakdown
+ * page) must not light up the `/team` tab.
+ */
+export function isNavItemActive(pathname: string, href: string): boolean {
+  return pathname === href || pathname.startsWith(`${href}/`);
+}
+
 export const NAV_ITEMS: NavItem[] = [
   { href: "/pit-scout", label: "Pit Scout" },
   { href: "/pit-dashboard", label: "Pit Dash", adminOnly: true },
