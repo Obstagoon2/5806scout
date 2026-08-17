@@ -27,7 +27,17 @@ export const MATCH_SCOUT_SECTIONS: readonly FormSection[] = [
         kind: "select",
         id: "startPos",
         label: "Starting position",
-        options: ["Depot side", "Center (Hub)", "Outpost side"],
+        // Paired depot/outpost so the picker lays out as two mirrored
+        // columns; Center is the odd one out and sits last.
+        options: [
+          "Depot side",
+          "Outpost side",
+          "Depot side bump",
+          "Outpost side bump",
+          "Depot side trench",
+          "Outpost side trench",
+          "Center (Hub)",
+        ],
       },
       {
         kind: "select",
@@ -84,17 +94,15 @@ export const MATCH_SCOUT_SECTIONS: readonly FormSection[] = [
         label: "Crossed during match",
         options: ["Bump", "Trench"],
       },
+      // Defense is timed, not eyeballed — the Match Scout page runs a
+      // stopwatch off the match clock and writes whole seconds here. They're
+      // counters so the Data tab averages them per team, and drive.ts weights
+      // them at 0 so seconds never read as points.
+      { kind: "counter", id: "defenseSeconds", label: "Defense played (sec)" },
       {
-        kind: "select",
-        id: "defensePlayed",
-        label: "Played defense",
-        options: ["No", "Part of match", "Most of match"],
-      },
-      {
-        kind: "select",
-        id: "wasDefended",
-        label: "Was defended",
-        options: ["No", "Yes"],
+        kind: "counter",
+        id: "defendedSeconds",
+        label: "Defended against (sec)",
       },
     ],
   },
@@ -115,6 +123,10 @@ export const MATCH_SCOUT_SECTIONS: readonly FormSection[] = [
       // Ratings ride as counters so the Data tab averages them per team; the
       // Match Scout page renders them as 0–5 scales, and drive.ts weights
       // them at 0 points so they never leak into score predictions.
+      // Shooter rate, set on a 1–25 slider rather than tallied. It's an
+      // observation about the robot, not an event count, so like the ratings
+      // it carries no point weight.
+      { kind: "counter", id: "fuelRate", label: "Fuel rate (balls/sec)", max: 25 },
       { kind: "counter", id: "driverSkill", label: "Driver skill (0–5)", max: 5 },
       { kind: "counter", id: "defenseSkill", label: "Defense skill (0–5)", max: 5 },
       {

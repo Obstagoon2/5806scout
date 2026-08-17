@@ -33,6 +33,12 @@ export const SCORING_WEIGHTS: ScoringWeights = {
   teleopFuelFed: 0,
   driverSkill: 0,
   defenseSkill: 0,
+  // A rate, not a total — the fuel it produces is already counted as fuel.
+  fuelRate: 0,
+  // Seconds, not points — without these the default 1-point weight would
+  // score a minute of defense as a minute's worth of fuel.
+  defenseSeconds: 0,
+  defendedSeconds: 0,
 };
 
 /**

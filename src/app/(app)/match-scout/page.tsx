@@ -15,6 +15,18 @@ import {
   type FormValues,
 } from "@/lib/formSchema";
 import { MATCH_SCOUT_SECTIONS } from "@/lib/matchScoutSchema";
+import {
+  formatClock,
+  IDLE_CLOCK,
+  isRunning,
+  shiftAt,
+  TELEOP_SECONDS,
+  toggleDefense,
+  toggleMatch,
+  watchSeconds,
+  type DefenseKind,
+  type MatchClock,
+} from "@/lib/matchTimer";
 import { RELIABILITY_FLAGS_DOC_ID } from "@/lib/reliability";
 import { useScoutForms } from "@/lib/useScoutForms";
 import {
@@ -64,8 +76,6 @@ type Status =
 // call) starts unanswered instead so silence never fakes a data point.
 const PRESET_VALUES: FormValues = {
   noShow: "No",
-  defensePlayed: "No",
-  wasDefended: "No",
   died: "No",
   tipped: "No",
   card: "None",
@@ -273,6 +283,156 @@ function RatingScale({
   );
 }
 
+/**
+ * Shooter rate on a 1–25 slider. Zero isn't on the scale — it means the scout
+ * never set it — so the readout stays a dash until the slider is moved rather
+ * than reporting a robot at 1 ball/sec it never earned.
+ */
+function RateSlider({
+  label,
+  min,
+  max,
+  value,
+  onChange,
+}: {
+  label: string;
+  min: number;
+  max: number;
+  value: number;
+  onChange: (value: number) => void;
+}) {
+  const isSet = value >= min;
+  return (
+    <div className="flex flex-col gap-1.5">
+      <div className="flex items-baseline justify-between gap-2">
+        <label
+          htmlFor="fuelRate"
+          className="text-sm font-medium text-graphite-700"
+        >
+          {label}
+        </label>
+        <span className="stat text-lg font-semibold text-graphite-900">
+          {isSet ? value : "—"}
+        </span>
+      </div>
+      <input
+        id="fuelRate"
+        type="range"
+        min={min}
+        max={max}
+        step={1}
+        value={isSet ? value : min}
+        onChange={(e) => onChange(Number(e.target.value))}
+        className="h-11 w-full accent-maroon-600"
+      />
+      <div className="stat flex justify-between text-xs text-graphite-400">
+        <span>{min}</span>
+        <span>{max}</span>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * The teleop clock and the two defense stopwatches it drives. The clock
+ * counts down like the arena's, and each defense button is a hold — armed
+ * while defense is happening, disarmed when it stops. Seconds accumulate only
+ * while the match is running, so pausing for a field fault costs nothing.
+ */
+function MatchClockPanel({
+  clock,
+  now,
+  showPlayed,
+  showDefended,
+  onToggleMatch,
+  onToggleDefense,
+  onReset,
+}: {
+  clock: MatchClock;
+  now: number;
+  showPlayed: boolean;
+  showDefended: boolean;
+  onToggleMatch: () => void;
+  onToggleDefense: (kind: DefenseKind) => void;
+  onReset: () => void;
+}) {
+  const elapsed = watchSeconds(clock.match, now);
+  const remaining = Math.max(0, TELEOP_SECONDS - elapsed);
+  const running = isRunning(clock.match);
+
+  const buttons: { kind: DefenseKind; label: string; show: boolean }[] = [
+    { kind: "played", label: "Playing defense", show: showPlayed },
+    { kind: "against", label: "Being defended", show: showDefended },
+  ];
+
+  return (
+    <div className="flex flex-col gap-3 rounded-lg border border-graphite-200 bg-graphite-50 p-3">
+      <div className="flex items-center gap-3">
+        <div className="flex flex-col">
+          <span className="stat text-3xl font-semibold leading-none text-graphite-900">
+            {formatClock(remaining)}
+          </span>
+          <span className="mt-1 text-xs uppercase tracking-wider text-graphite-500">
+            {elapsed === 0 && !running ? "Teleop" : shiftAt(elapsed)}
+          </span>
+        </div>
+        <button
+          type="button"
+          onClick={onToggleMatch}
+          className={`ml-auto min-h-11 rounded-md border px-4 text-sm font-semibold transition ${
+            running
+              ? "border-amber-500 bg-amber-100/60 text-graphite-900"
+              : "border-maroon-600 bg-maroon-600 text-white"
+          }`}
+        >
+          {running ? "Pause" : elapsed > 0 ? "Resume" : "Start"}
+        </button>
+        <button
+          type="button"
+          onClick={onReset}
+          className="min-h-11 rounded-md border border-graphite-200 bg-surface px-3 text-sm font-medium text-graphite-600 transition hover:border-graphite-300"
+        >
+          Reset
+        </button>
+      </div>
+
+      <div className="grid gap-2 sm:grid-cols-2">
+        {buttons
+          .filter((button) => button.show)
+          .map((button) => {
+            const armed = clock.armed[button.kind];
+            const seconds = watchSeconds(clock[button.kind], now);
+            return (
+              <button
+                key={button.kind}
+                type="button"
+                aria-pressed={armed}
+                onClick={() => onToggleDefense(button.kind)}
+                className={`flex min-h-14 items-center justify-between gap-2 rounded-md border px-3 text-sm font-semibold transition ${
+                  armed
+                    ? "border-maroon-600 bg-maroon-600 text-white"
+                    : "border-graphite-200 bg-surface text-graphite-700 hover:border-graphite-300"
+                }`}
+              >
+                <span>{button.label}</span>
+                <span className="stat text-lg">{formatClock(seconds)}</span>
+              </button>
+            );
+          })}
+      </div>
+
+      {/* An armed button that isn't counting is the one way this can quietly
+          lose data, so say so instead of looking like it's recording. */}
+      {!running && (clock.armed.played || clock.armed.against) && (
+        <p className="text-xs text-amber-700 dark:text-amber-500">
+          Defense is held but the match clock is paused — press Start to keep
+          counting.
+        </p>
+      )}
+    </div>
+  );
+}
+
 export default function MatchScoutPage() {
   const { profile, user, dataTeamId } = useAuth();
   const { matchSections } = useScoutForms();
@@ -285,6 +445,11 @@ export default function MatchScoutPage() {
   const [entered, setEntered] = useState<FormValues>(() =>
     freshValues(MATCH_SCOUT_SECTIONS),
   );
+  // The teleop clock and the defense stopwatches it drives. Kept out of
+  // `entered` because it isn't something the scout typed — the seconds it
+  // produces are folded into `values` below.
+  const [clock, setClock] = useState<MatchClock>(IDLE_CLOCK);
+  const [now, setNow] = useState<number>(() => Date.now());
   const [status, setStatus] = useState<Status>({ state: "idle" });
   const [reliabilityIssue, setReliabilityIssue] = useState(false);
   const [recent, setRecent] = useState<RecentSubmission[]>([]);
@@ -328,9 +493,25 @@ export default function MatchScoutPage() {
   // questions get filled in here rather than by a reset that would wipe
   // whatever the scout has already tapped in.
   const values = useMemo<FormValues>(
-    () => ({ ...freshValues(matchSections), ...entered }),
-    [matchSections, entered],
+    () => ({
+      ...freshValues(matchSections),
+      ...entered,
+      // The stopwatches are the source of truth for the two defense fields —
+      // they aren't tappable numbers, so nothing in `entered` can shadow them.
+      defenseSeconds: watchSeconds(clock.played, now),
+      defendedSeconds: watchSeconds(clock.against, now),
+    }),
+    [matchSections, entered, clock, now],
   );
+
+  // Only tick while something is actually counting; a stopped stopwatch reads
+  // straight off its banked total, so re-rendering it would be busywork.
+  const clockRunning = isRunning(clock.match);
+  useEffect(() => {
+    if (!clockRunning) return;
+    const id = setInterval(() => setNow(Date.now()), 250);
+    return () => clearInterval(id);
+  }, [clockRunning]);
 
   useEffect(() => {
     // Submissions land in the shared store so a sister pair pools its data.
@@ -362,6 +543,25 @@ export default function MatchScoutPage() {
     if (status.state !== "idle" && status.state !== "saving") {
       setStatus({ state: "idle" });
     }
+  }
+
+  // Every clock transition stamps the same `now` it applies, so the display
+  // never shows a frame computed against a stale tick.
+  function handleToggleMatch() {
+    const stamp = Date.now();
+    setNow(stamp);
+    setClock((prev) => toggleMatch(prev, stamp));
+  }
+
+  function handleToggleDefense(kind: DefenseKind) {
+    const stamp = Date.now();
+    setNow(stamp);
+    setClock((prev) => toggleDefense(prev, kind, stamp));
+  }
+
+  function resetClock() {
+    setNow(Date.now());
+    setClock(IDLE_CLOCK);
   }
 
   const noShow = values.noShow === "Yes";
@@ -457,6 +657,7 @@ export default function MatchScoutPage() {
       setMatchNumber(String(match + 1));
       setScoutedTeam("");
       setEntered(freshValues(matchSections));
+      resetClock();
       setReliabilityIssue(false);
       setStatus({ state: "saved" });
     } catch (err) {
@@ -577,7 +778,16 @@ export default function MatchScoutPage() {
         {has("startPos") && (
           <Segmented
             label="Starting position"
-            options={["Depot side", "Center (Hub)", "Outpost side"]}
+            options={[
+              "Depot side",
+              "Outpost side",
+              "Depot side bump",
+              "Outpost side bump",
+              "Depot side trench",
+              "Outpost side trench",
+              "Center (Hub)",
+            ]}
+            columns={2}
             value={values.startPos as string | null}
             onChange={(v) => setValue("startPos", v)}
           />
@@ -668,6 +878,18 @@ export default function MatchScoutPage() {
               <>
                 <SectionTitle>Teleop</SectionTitle>
 
+                {(has("defenseSeconds") || has("defendedSeconds")) && (
+                  <MatchClockPanel
+                    clock={clock}
+                    now={now}
+                    showPlayed={has("defenseSeconds")}
+                    showDefended={has("defendedSeconds")}
+                    onToggleMatch={handleToggleMatch}
+                    onToggleDefense={handleToggleDefense}
+                    onReset={resetClock}
+                  />
+                )}
+
                 {has("teleopScoredFuel") && (
                   <FuelCounter
                     label="Fuel scored — teleop"
@@ -702,23 +924,8 @@ export default function MatchScoutPage() {
                   />
                 )}
 
-                {has("defensePlayed") && (
-                  <Segmented
-                    label="Played defense"
-                    options={["No", "Part of match", "Most of match"]}
-                    value={values.defensePlayed as string | null}
-                    onChange={(v) => setValue("defensePlayed", v)}
-                  />
-                )}
-
-                {has("wasDefended") && (
-                  <Segmented
-                    label="Was defended"
-                    options={["No", "Yes"]}
-                    value={values.wasDefended as string | null}
-                    onChange={(v) => setValue("wasDefended", v)}
-                  />
-                )}
+                {/* Both defense fields are timed by the clock at the top of
+                    this section, so there's nothing to tap for them here. */}
 
                 {renderExtras("Teleop")}
               </>
@@ -753,6 +960,16 @@ export default function MatchScoutPage() {
             {hasSection("Post-Match") && (
               <>
                 <SectionTitle>Post-Match</SectionTitle>
+
+                {has("fuelRate") && (
+                  <RateSlider
+                    label="Fuel rate (balls/sec)"
+                    min={1}
+                    max={25}
+                    value={(values.fuelRate as number) ?? 0}
+                    onChange={(v) => setValue("fuelRate", v)}
+                  />
+                )}
 
                 {has("driverSkill") && (
                   <RatingScale
