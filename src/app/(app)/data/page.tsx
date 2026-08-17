@@ -10,12 +10,33 @@ import {
 import { ReliabilityWarning } from "@/components/ReliabilityFlags";
 import { useScoutForms } from "@/lib/useScoutForms";
 import { collection, onSnapshot, orderBy, query } from "firebase/firestore";
+import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
+
+/** Team number that links to the admin-only breakdown page for admins. */
+function TeamNumber({
+  team,
+  isAdmin,
+}: {
+  team: string;
+  isAdmin: boolean;
+}) {
+  if (!isAdmin) return <>{team}</>;
+  return (
+    <Link
+      href={`/teams/${team}`}
+      className="underline-offset-2 hover:text-maroon-700 hover:underline dark:hover:text-maroon-300"
+    >
+      {team}
+    </Link>
+  );
+}
 
 type View = "raw" | "teams";
 
 export default function DataPage() {
-  const { dataTeamId } = useAuth();
+  const { dataTeamId, profile } = useAuth();
+  const isAdmin = profile?.role === "admin";
   // Columns follow this team's customized schema, not the static defaults.
   const { matchSections } = useScoutForms();
   const [view, setView] = useState<View>("raw");
@@ -151,7 +172,7 @@ export default function DataPage() {
                     <td className="stat px-3 py-2">Q{s.matchNumber}</td>
                     <td className="stat px-3 py-2">
                       <span className="inline-flex items-center gap-1.5">
-                        {s.scoutedTeam}
+                        <TeamNumber team={s.scoutedTeam} isAdmin={isAdmin} />
                         <ReliabilityWarning
                           teamNumber={s.scoutedTeam}
                           matchNumber={s.matchNumber}
@@ -213,7 +234,7 @@ export default function DataPage() {
                 <tr key={agg.team} className="transition hover:bg-graphite-50">
                   <td className="stat px-3 py-2 font-semibold">
                     <span className="inline-flex items-center gap-1.5">
-                      {agg.team}
+                      <TeamNumber team={agg.team} isAdmin={isAdmin} />
                       <ReliabilityWarning teamNumber={agg.team} />
                     </span>
                   </td>
