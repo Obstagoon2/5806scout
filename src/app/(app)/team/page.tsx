@@ -3,10 +3,25 @@
 import { useAuth } from "@/lib/auth/AuthProvider";
 import {
   assignMatchScouts,
+  assignMatchScoutsByShift,
   assignPitScouts,
   type MatchAssignmentsDoc,
   type PitAssignmentsDoc,
 } from "@/lib/assignments";
+import {
+  clampMatchesPerSitting,
+  DUTY_LABELS,
+  eligibleUids,
+  emptySubteamsDoc,
+  MAX_MATCHES_PER_SITTING,
+  membersBySubteam,
+  MIN_MATCHES_PER_SITTING,
+  resolveMemberships,
+  shiftGroupsFor,
+  type Subteam,
+  type SubteamDuty,
+  type SubteamsDoc,
+} from "@/lib/subteams";
 import type { EventData } from "@/lib/eventData";
 import { db } from "@/lib/firebase/client";
 import {
@@ -26,6 +41,44 @@ import {
 } from "firebase/firestore";
 import { useEffect, useState } from "react";
 
+// Config writes live at module scope: each stamps its own "when", which keeps
+// the clock read out of the component body entirely (where the React Compiler
+// has to assume anything it can't trace might run during render).
+
+async function writePitAssignments(
+  teamId: string,
+  byScout: PitAssignmentsDoc["byScout"],
+  scoutNames: PitAssignmentsDoc["scoutNames"],
+): Promise<void> {
+  await setDoc(doc(db, "teams", teamId, "config", "pitAssignments"), {
+    byScout,
+    scoutNames,
+    generatedAt: Date.now(),
+  } satisfies PitAssignmentsDoc);
+}
+
+async function writeMatchAssignments(
+  teamId: string,
+  slots: MatchAssignmentsDoc["slots"],
+  scoutNames: MatchAssignmentsDoc["scoutNames"],
+): Promise<void> {
+  await setDoc(doc(db, "teams", teamId, "config", "matchAssignments"), {
+    slots,
+    scoutNames,
+    generatedAt: Date.now(),
+  } satisfies MatchAssignmentsDoc);
+}
+
+async function writeSubteams(
+  teamId: string,
+  next: Omit<SubteamsDoc, "updatedAt">,
+): Promise<void> {
+  await setDoc(doc(db, "teams", teamId, "config", "subteams"), {
+    ...next,
+    updatedAt: Date.now(),
+  } satisfies SubteamsDoc);
+}
+
 export default function TeamPage() {
   const { profile, user, team, dataTeamId } = useAuth();
   const [roster, setRoster] = useState<UserProfile[]>([]);
@@ -43,6 +96,8 @@ export default function TeamPage() {
   const [codeInput, setCodeInput] = useState("");
   const [linkBusy, setLinkBusy] = useState(false);
   const [linkMessage, setLinkMessage] = useState<string | null>(null);
+  const [subteamsDoc, setSubteamsDoc] = useState<SubteamsDoc>(emptySubteamsDoc);
+  const [newSubteamName, setNewSubteamName] = useState("");
 
   // Roster pools both teams when a sister team is linked, so assignments
   // split the work across every active scout in the pair.
@@ -98,7 +153,15 @@ export default function TeamPage() {
       doc(db, "teams", dataTeamId, "config", "matchAssignments"),
       (s) => setHasMatchAssignments(s.exists()),
     );
+    const unsubSubteams = onSnapshot(
+      doc(db, "teams", dataTeamId, "config", "subteams"),
+      (s) =>
+        setSubteamsDoc(
+          s.exists() ? (s.data() as SubteamsDoc) : emptySubteamsDoc(),
+        ),
+    );
     return () => {
+      unsubSubteams();
       unsubEvent();
       unsubPit();
       unsubMatch();
@@ -107,9 +170,83 @@ export default function TeamPage() {
 
   const isAdmin = profile?.role === "admin";
   const activeScouts = roster.filter((m) => m.role === "scout" && m.active);
+  const activeScoutUids = activeScouts.map((m) => m.uid);
+
+  // Subteams are opt-in: with none defined, assignment behaves exactly as it
+  // did before — every active scout in one pool.
+  const usingSubteams = subteamsDoc.subteams.length > 0;
+  const memberships = resolveMemberships(
+    subteamsDoc.subteams,
+    subteamsDoc.memberships,
+    activeScoutUids,
+  );
+  const matchGroups = shiftGroupsFor(
+    "match",
+    subteamsDoc.subteams,
+    memberships,
+    activeScoutUids,
+  );
+  const matchScoutUids = usingSubteams
+    ? matchGroups.flatMap((group) => group.uids)
+    : activeScoutUids;
+  const pitScoutUids = usingSubteams
+    ? eligibleUids("pit", subteamsDoc.subteams, memberships, activeScoutUids)
+    : activeScoutUids;
 
   function scoutNames(): Record<string, string> {
     return Object.fromEntries(activeScouts.map((m) => [m.uid, m.fullName]));
+  }
+
+  async function saveSubteams(next: Omit<SubteamsDoc, "updatedAt">) {
+    if (!dataTeamId) return;
+    setError(null);
+    try {
+      await writeSubteams(dataTeamId, next);
+    } catch {
+      setError("Could not save subteams — check your connection.");
+    }
+  }
+
+  function addSubteam() {
+    const name = newSubteamName.trim();
+    if (!name) return;
+    setNewSubteamName("");
+    void saveSubteams({
+      ...subteamsDoc,
+      subteams: [
+        ...subteamsDoc.subteams,
+        { id: crypto.randomUUID(), name, duty: "both" },
+      ],
+    });
+  }
+
+  function updateSubteam(id: string, patch: Partial<Subteam>) {
+    void saveSubteams({
+      ...subteamsDoc,
+      subteams: subteamsDoc.subteams.map((group) =>
+        group.id === id ? { ...group, ...patch } : group,
+      ),
+    });
+  }
+
+  function removeSubteam(id: string) {
+    // Drop the memberships too — a uid pointing at a deleted group would
+    // otherwise be silently re-placed on every read.
+    const memberships = Object.fromEntries(
+      Object.entries(subteamsDoc.memberships).filter(([, group]) => group !== id),
+    );
+    void saveSubteams({
+      ...subteamsDoc,
+      subteams: subteamsDoc.subteams.filter((group) => group.id !== id),
+      memberships,
+    });
+  }
+
+  function setMembership(uid: string, subteamId: string) {
+    void saveSubteams({
+      ...subteamsDoc,
+      memberships: { ...subteamsDoc.memberships, [uid]: subteamId },
+    });
   }
 
   async function handleAssignPit() {
@@ -127,19 +264,11 @@ export default function TeamPage() {
     try {
       const byScout = assignPitScouts(
         event.teams.map((t) => t.teamNumber),
-        activeScouts.map((m) => m.uid),
+        pitScoutUids,
       );
-      const payload: PitAssignmentsDoc = {
-        byScout,
-        scoutNames: scoutNames(),
-        generatedAt: Date.now(),
-      };
-      await setDoc(
-        doc(db, "teams", dataTeamId, "config", "pitAssignments"),
-        payload,
-      );
+      await writePitAssignments(dataTeamId, byScout, scoutNames());
       setAssignSuccess(
-        `Pit scouting: ${event.teams.length} teams split across ${activeScouts.length} scouts — see the Assignments tab.`,
+        `Pit scouting: ${event.teams.length} teams split across ${pitScoutUids.length} scout${pitScoutUids.length === 1 ? "" : "s"} — see the Assignments tab.`,
       );
     } catch {
       setError("Could not save pit assignments — check your connection.");
@@ -159,21 +288,20 @@ export default function TeamPage() {
     setError(null);
     setAssignSuccess(null);
     try {
-      const slots = assignMatchScouts(
-        event.matches,
-        activeScouts.map((m) => m.uid),
-      );
-      const payload: MatchAssignmentsDoc = {
-        slots,
-        scoutNames: scoutNames(),
-        generatedAt: Date.now(),
-      };
-      await setDoc(
-        doc(db, "teams", dataTeamId, "config", "matchAssignments"),
-        payload,
-      );
+      // With subteams defined, groups take turns covering blocks of matches
+      // (one sitting each); without them, everyone shares one rotation.
+      const slots = usingSubteams
+        ? assignMatchScoutsByShift(
+            event.matches,
+            matchGroups,
+            subteamsDoc.matchesPerSitting,
+          )
+        : assignMatchScouts(event.matches, activeScoutUids);
+      await writeMatchAssignments(dataTeamId, slots, scoutNames());
       setAssignSuccess(
-        `Match scouting: ${event.matches.length} matches covered by ${activeScouts.length} scouts — see the Assignments tab.`,
+        usingSubteams
+          ? `Match scouting: ${event.matches.length} matches split into sittings of ${clampMatchesPerSitting(subteamsDoc.matchesPerSitting)} across ${matchGroups.length} subteam${matchGroups.length === 1 ? "" : "s"} — see the Assignments tab.`
+          : `Match scouting: ${event.matches.length} matches covered by ${activeScoutUids.length} scouts — see the Assignments tab.`,
       );
     } catch {
       setError("Could not save match assignments — check your connection.");
@@ -313,14 +441,16 @@ export default function TeamPage() {
             Scouting assignments
           </p>
           <p className="text-xs text-graphite-500">
-            {event
-              ? `Randomly split the ${event.teams.length} event teams (pit) or all ${event.matches.length} matches (match) across the ${activeScouts.length} active scout${activeScouts.length === 1 ? "" : "s"}. Results appear in the Assignments tab.`
-              : "Sync an event on the Event tab first."}
+            {!event
+              ? "Sync an event on the Event tab first."
+              : usingSubteams
+                ? `Pit: ${event.teams.length} event teams split across ${pitScoutUids.length} pit-eligible scout${pitScoutUids.length === 1 ? "" : "s"}. Match: ${event.matches.length} matches, with ${matchGroups.length} subteam${matchGroups.length === 1 ? "" : "s"} taking turns in sittings of ${clampMatchesPerSitting(subteamsDoc.matchesPerSitting)}. Results appear in the Assignments tab.`
+                : `Randomly split the ${event.teams.length} event teams (pit) or all ${event.matches.length} matches (match) across the ${activeScouts.length} active scout${activeScouts.length === 1 ? "" : "s"}. Results appear in the Assignments tab.`}
           </p>
           <div className="flex flex-wrap gap-2">
             <button
               type="button"
-              disabled={!event || activeScouts.length === 0 || event.teams.length === 0}
+              disabled={!event || pitScoutUids.length === 0 || event.teams.length === 0}
               onClick={() => void handleAssignPit()}
               className="btn-primary px-4 py-2"
             >
@@ -328,7 +458,9 @@ export default function TeamPage() {
             </button>
             <button
               type="button"
-              disabled={!event || activeScouts.length === 0 || event.matches.length === 0}
+              disabled={
+                !event || matchScoutUids.length === 0 || event.matches.length === 0
+              }
               onClick={() => void handleAssignMatch()}
               className="btn-primary px-4 py-2"
             >
@@ -341,6 +473,22 @@ export default function TeamPage() {
               below.
             </p>
           )}
+          {event && activeScouts.length > 0 && usingSubteams && (
+            <>
+              {pitScoutUids.length === 0 && (
+                <p className="text-xs text-amber-700">
+                  No subteam is set to pit scouting — set one to Pit or Match +
+                  pit below.
+                </p>
+              )}
+              {matchScoutUids.length === 0 && (
+                <p className="text-xs text-amber-700">
+                  No subteam is set to match scouting — set one to Match or
+                  Match + pit below.
+                </p>
+              )}
+            </>
+          )}
         </div>
       )}
 
@@ -348,6 +496,123 @@ export default function TeamPage() {
         <p className="badge-success rounded-md px-3 py-2 text-sm normal-case tracking-normal">
           {assignSuccess}
         </p>
+      )}
+
+      {isAdmin && (
+        <div className="surface-card flex flex-col gap-3 p-4">
+          <div>
+            <p className="text-sm font-medium text-graphite-900">Subteams</p>
+            <p className="mt-1 text-xs text-graphite-500">
+              Split the crew into named groups and say what each one scouts.
+              Match-scouting subteams take turns: one group covers a sitting,
+              then hands off to the next. With no subteams, every active scout
+              shares one rotation.
+            </p>
+          </div>
+
+          {subteamsDoc.subteams.length > 0 && (
+            <ul className="flex flex-col gap-2">
+              {subteamsDoc.subteams.map((group) => {
+                const size = (
+                  membersBySubteam(
+                    subteamsDoc.subteams,
+                    memberships,
+                    activeScoutUids,
+                  )[group.id] ?? []
+                ).length;
+                return (
+                  <li
+                    key={group.id}
+                    className="flex flex-wrap items-center gap-2 rounded-md border border-graphite-200 p-2"
+                  >
+                    <input
+                      type="text"
+                      value={group.name}
+                      aria-label="Subteam name"
+                      onChange={(e) =>
+                        updateSubteam(group.id, { name: e.target.value })
+                      }
+                      className="field-input min-w-0 flex-1 py-1.5"
+                    />
+                    <select
+                      value={group.duty}
+                      aria-label={`What ${group.name} scouts`}
+                      onChange={(e) =>
+                        updateSubteam(group.id, {
+                          duty: e.target.value as SubteamDuty,
+                        })
+                      }
+                      className="field-input w-auto py-1.5"
+                    >
+                      {(["match", "pit", "both"] as const).map((duty) => (
+                        <option key={duty} value={duty}>
+                          {DUTY_LABELS[duty]}
+                        </option>
+                      ))}
+                    </select>
+                    <span className="stat shrink-0 text-xs text-graphite-500">
+                      {size} scout{size === 1 ? "" : "s"}
+                    </span>
+                    <button
+                      type="button"
+                      aria-label={`Delete ${group.name}`}
+                      onClick={() => removeSubteam(group.id)}
+                      className="rounded px-2 py-1 text-xs font-medium text-graphite-400 transition hover:bg-maroon-50 hover:text-maroon-700 dark:hover:text-maroon-300"
+                    >
+                      ✕
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              addSubteam();
+            }}
+            className="flex items-center gap-2"
+          >
+            <input
+              type="text"
+              placeholder="e.g. Stands crew A"
+              value={newSubteamName}
+              onChange={(e) => setNewSubteamName(e.target.value)}
+              className="field-input flex-1 py-1.5"
+            />
+            <button
+              type="submit"
+              disabled={!newSubteamName.trim()}
+              className="btn-secondary px-4 py-2"
+            >
+              Add subteam
+            </button>
+          </form>
+
+          <label className="flex flex-wrap items-center gap-2 text-sm text-graphite-700">
+            <span>Matches per sitting</span>
+            <input
+              type="number"
+              min={MIN_MATCHES_PER_SITTING}
+              max={MAX_MATCHES_PER_SITTING}
+              value={subteamsDoc.matchesPerSitting}
+              onChange={(e) =>
+                void saveSubteams({
+                  ...subteamsDoc,
+                  matchesPerSitting: clampMatchesPerSitting(
+                    Number(e.target.value),
+                  ),
+                })
+              }
+              className="field-input stat w-20 py-1.5"
+            />
+            <span className="text-xs text-graphite-500">
+              how many matches one scout covers before their subteam rotates
+              off
+            </span>
+          </label>
+        </div>
       )}
 
       {isAdmin && (
@@ -541,6 +806,22 @@ export default function TeamPage() {
                 <span className="rounded bg-amber-100 px-1.5 py-0.5 text-xs font-semibold text-amber-900 dark:text-amber-200">
                   inactive
                 </span>
+              )}
+              {/* New scouts are auto-placed in the smallest subteam; this is
+                  how an admin moves them somewhere else. */}
+              {isAdmin && usingSubteams && member.role === "scout" && member.active && (
+                <select
+                  value={memberships[member.uid] ?? ""}
+                  aria-label={`Subteam for ${member.fullName}`}
+                  onChange={(e) => setMembership(member.uid, e.target.value)}
+                  className="field-input w-auto py-1 text-xs"
+                >
+                  {subteamsDoc.subteams.map((group) => (
+                    <option key={group.id} value={group.id}>
+                      {group.name}
+                    </option>
+                  ))}
+                </select>
               )}
               {isAdmin && member.uid !== user?.uid && member.teamId === profile?.teamId && (
                 <button
