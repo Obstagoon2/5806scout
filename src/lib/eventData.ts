@@ -166,36 +166,77 @@ export interface EventRankingRow {
   wins: number | null;
   losses: number | null;
   ties: number | null;
+  /** Ranking score — average RP per match, the field's own sort key. */
   rpsPerMatch: number | null;
-  epa: number | null;
+  matchesPlayed: number | null;
+}
+
+// --- TBA rankings payload (https://www.thebluealliance.com/apidocs/v3) ---
+
+export interface TbaRankingEntry {
+  team_key: string;
+  rank: number | null;
+  record: { wins: number; losses: number; ties: number } | null;
+  matches_played?: number | null;
+  /**
+   * The field's own sort keys, in the order described by `sort_order_info`.
+   * Which slot holds the ranking score moves between seasons, so it's found
+   * by name rather than assumed to be index 0.
+   */
+  sort_orders?: (number | null)[] | null;
+}
+
+export interface TbaEventRankings {
+  rankings?: TbaRankingEntry[] | null;
+  sort_order_info?: ({ name?: string | null } | null)[] | null;
+}
+
+/** Index of the ranking-score sort order, or 0 when TBA doesn't name one. */
+function rankingScoreIndex(info: TbaEventRankings["sort_order_info"]): number {
+  const found = (info ?? []).findIndex((entry) =>
+    /ranking score/i.test(entry?.name ?? ""),
+  );
+  return found >= 0 ? found : 0;
 }
 
 /**
- * Map Statbotics team_events into ranking rows sorted by official qual rank
- * (teams without a rank yet fall to the bottom, ordered by EPA best-first).
+ * Map TBA's official event rankings into ranking rows, already in rank order.
+ * These are the numbers on the field's own display — the same rank that
+ * decides alliance selection — rather than a third party's model of them.
+ *
+ * TBA gives rankings by team key only, so nicknames come from the event's
+ * team list; a team missing from it falls back to its number.
  */
 export function mapRankings(
-  statbotics: readonly StatboticsTeamEvent[],
+  payload: TbaEventRankings,
+  tbaTeams: readonly TbaTeamSimple[] = [],
 ): EventRankingRow[] {
-  return statbotics
+  const scoreIndex = rankingScoreIndex(payload.sort_order_info);
+  const nameByTeam = new Map(
+    tbaTeams.map((team) => [team.team_number, team.nickname]),
+  );
+
+  return (payload.rankings ?? [])
     .map((entry) => {
-      const qual = entry.record?.qual ?? null;
+      const teamNumber = teamKeyToNumber(entry.team_key);
       return {
-        rank: qual?.rank ?? null,
-        teamNumber: entry.team,
-        teamName: entry.team_name ?? String(entry.team),
-        wins: qual?.wins ?? null,
-        losses: qual?.losses ?? null,
-        ties: qual?.ties ?? null,
-        rpsPerMatch: qual?.rps_per_match ?? null,
-        epa: epaTotal(entry),
+        rank: entry.rank ?? null,
+        teamNumber,
+        teamName: nameByTeam.get(teamNumber) ?? String(teamNumber),
+        wins: entry.record?.wins ?? null,
+        losses: entry.record?.losses ?? null,
+        ties: entry.record?.ties ?? null,
+        rpsPerMatch: entry.sort_orders?.[scoreIndex] ?? null,
+        matchesPlayed: entry.matches_played ?? null,
       };
     })
+    // TBA returns these in rank order, but sort anyway so a partial or
+    // reordered payload can't render a table that reads as ranked and isn't.
     .sort((a, b) => {
       if (a.rank !== null && b.rank !== null) return a.rank - b.rank;
       if (a.rank !== null) return -1;
       if (b.rank !== null) return 1;
-      return (b.epa ?? -Infinity) - (a.epa ?? -Infinity);
+      return a.teamNumber - b.teamNumber;
     });
 }
 

@@ -847,7 +847,7 @@ function RankingTable({ eventKey, myTeam }: { eventKey: string; myTeam: string }
   return (
     <div className="flex flex-col gap-2">
       <p className="text-xs text-graphite-400">
-        Live from Statbotics — refreshes every minute.
+        Official standings from The Blue Alliance — refreshes every minute.
         {fetchedAt !== null &&
           ` Last updated ${new Date(fetchedAt).toLocaleTimeString()}.`}
       </p>
@@ -878,7 +878,7 @@ function RankingTable({ eventKey, myTeam }: { eventKey: string; myTeam: string }
                 <th className="px-3 py-2.5">Name</th>
                 <th className="px-3 py-2.5">Record</th>
                 <th className="px-3 py-2.5">RPs / match</th>
-                <th className="px-3 py-2.5">EPA</th>
+                <th className="px-3 py-2.5">Played</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-graphite-100">
@@ -906,15 +906,15 @@ function RankingTable({ eventKey, myTeam }: { eventKey: string; myTeam: string }
                     {row.rpsPerMatch !== null ? row.rpsPerMatch.toFixed(2) : "—"}
                   </td>
                   <td className="stat px-3 py-2">
-                    {row.epa !== null ? row.epa.toFixed(1) : "—"}
+                    {row.matchesPlayed ?? "—"}
                   </td>
                 </tr>
               ))}
               {rankings.length === 0 && (
                 <tr>
                   <td colSpan={6} className="px-3 py-8 text-center text-graphite-400">
-                    No ranking data yet — Statbotics publishes it once quals
-                    start.
+                    No ranking data yet — the field publishes standings once
+                    quals start.
                   </td>
                 </tr>
               )}

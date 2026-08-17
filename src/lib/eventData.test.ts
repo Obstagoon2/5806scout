@@ -10,6 +10,7 @@ import {
   teamKeyToNumber,
   type EventTeam,
   type StatboticsTeamEvent,
+  type TbaRankingEntry,
   type TbaEventSimple,
   type TbaMatchSimple,
   type TbaTeamSimple,
@@ -148,49 +149,89 @@ describe("mapRankings", () => {
   function entry(
     team: number,
     rank: number | null,
-    epa: number | null,
-  ): StatboticsTeamEvent {
+    score = 2.5,
+  ): TbaRankingEntry {
     return {
-      team,
-      team_name: `Team ${team}`,
-      epa: epa !== null ? { total_points: epa } : null,
-      record:
-        rank !== null
-          ? {
-              qual: {
-                wins: 5,
-                losses: 3,
-                ties: 0,
-                rps_per_match: 2.5,
-                rank,
-              },
-            }
-          : null,
+      team_key: `frc${team}`,
+      rank,
+      record: { wins: 5, losses: 3, ties: 0 },
+      matches_played: 8,
+      sort_orders: [99, score],
     };
   }
 
-  it("sorts by qual rank ascending", () => {
-    const rows = mapRankings([entry(111, 3, 20), entry(222, 1, 50), entry(333, 2, 40)]);
+  // Ranking score is the SECOND sort order here on purpose: which slot holds
+  // it moves between seasons, so the mapper must find it by name.
+  const sortOrderInfo = [{ name: "Coopertition" }, { name: "Ranking Score" }];
+
+  const names: TbaTeamSimple[] = [
+    { team_number: 222, nickname: "Basement Lions", city: "Livingston" },
+  ];
+
+  it("sorts by official rank and reads the named ranking score", () => {
+    const rows = mapRankings(
+      {
+        rankings: [entry(111, 3), entry(222, 1, 2.75), entry(333, 2)],
+        sort_order_info: sortOrderInfo,
+      },
+      names,
+    );
+
     expect(rows.map((r) => r.teamNumber)).toEqual([222, 333, 111]);
-    expect(rows[0]).toMatchObject({
+    expect(rows[0]).toEqual({
       rank: 1,
-      teamName: "Team 222",
+      teamNumber: 222,
+      teamName: "Basement Lions",
       wins: 5,
       losses: 3,
       ties: 0,
-      rpsPerMatch: 2.5,
-      epa: 50,
+      rpsPerMatch: 2.75,
+      matchesPlayed: 8,
     });
   });
 
-  it("puts unranked teams last, ordered by EPA best-first", () => {
-    const rows = mapRankings([
-      entry(111, null, 30),
-      entry(222, 1, 50),
-      entry(333, null, 60),
-    ]);
-    expect(rows.map((r) => r.teamNumber)).toEqual([222, 333, 111]);
+  it("falls back to the first sort order when TBA names none", () => {
+    const rows = mapRankings({ rankings: [entry(111, 1)] });
+    expect(rows[0].rpsPerMatch).toBe(99);
+  });
+
+  it("falls back to the team number when the team list has no nickname", () => {
+    const rows = mapRankings(
+      { rankings: [entry(111, 1)], sort_order_info: sortOrderInfo },
+      names,
+    );
+    expect(rows[0].teamName).toBe("111");
+  });
+
+  it("puts unranked teams last, ordered by team number", () => {
+    const rows = mapRankings({
+      rankings: [entry(333, null), entry(222, 1), entry(111, null)],
+      sort_order_info: sortOrderInfo,
+    });
+
+    expect(rows.map((r) => r.teamNumber)).toEqual([222, 111, 333]);
     expect(rows[1].rank).toBeNull();
+  });
+
+  it("returns an empty table for the pre-quals payload", () => {
+    // TBA answers 200 with a literal null before rankings exist; the route
+    // hands that through as {}.
+    expect(mapRankings({})).toEqual([]);
+    expect(mapRankings({ rankings: null })).toEqual([]);
+  });
+
+  it("survives an entry with no record or sort orders", () => {
+    const rows = mapRankings({
+      rankings: [{ team_key: "frc111", rank: 1, record: null }],
+    });
+
+    expect(rows[0]).toMatchObject({
+      wins: null,
+      losses: null,
+      ties: null,
+      rpsPerMatch: null,
+      matchesPlayed: null,
+    });
   });
 });
 
