@@ -10,6 +10,14 @@ export interface EventTeam {
   /** Statbotics EPA (expected points added) — null when Statbotics has no data. */
   epa: number | null;
   epaRank: number | null;
+  /**
+   * TBA's Offensive Power Rating: the event's own least-squares estimate of
+   * how many points this team adds to an alliance score. TBA can't compute it
+   * until qualification matches have been played, and docs synced before OPR
+   * support shipped don't carry it at all — hence optional as well as
+   * nullable.
+   */
+  opr?: number | null;
 }
 
 export interface EventMatch {
@@ -72,6 +80,11 @@ export function mapVenue(event: TbaEvent): EventVenue {
   };
 }
 
+/** GET /event/{key}/oprs — keys are TBA team keys ("frc5806"). */
+export interface TbaEventOprs {
+  oprs: Record<string, number>;
+}
+
 export interface TbaMatchSimple {
   key: string;
   comp_level: string;
@@ -118,7 +131,16 @@ export function teamKeyToNumber(teamKey: string): number {
 export function mapTeams(
   tbaTeams: readonly TbaTeamSimple[],
   statbotics: readonly StatboticsTeamEvent[],
+  oprs?: TbaEventOprs | null,
 ): EventTeam[] {
+  const oprByTeam = new Map<number, number>();
+  for (const [teamKey, opr] of Object.entries(oprs?.oprs ?? {})) {
+    const teamNumber = teamKeyToNumber(teamKey);
+    if (Number.isInteger(teamNumber) && typeof opr === "number") {
+      oprByTeam.set(teamNumber, opr);
+    }
+  }
+
   const epaByTeam = new Map<number, number>();
   for (const entry of statbotics) {
     const total = epaTotal(entry);
@@ -135,6 +157,7 @@ export function mapTeams(
       city: t.city ?? "",
       epa: epaByTeam.get(t.team_number) ?? null,
       epaRank: rankByTeam.get(t.team_number) ?? null,
+      opr: oprByTeam.get(t.team_number) ?? null,
     }))
     .sort((a, b) => a.teamNumber - b.teamNumber);
 }
@@ -156,6 +179,25 @@ export function preserveEpa(
     const before = prior.get(team.teamNumber);
     if (!before || before.epa === null) return team;
     return { ...team, epa: before.epa, epaRank: before.epaRank };
+  });
+}
+
+/**
+ * The same guard for OPR: TBA has no OPRs to give until qualification
+ * MATCHES have been played, so a pre-event sync legitimately returns none.
+ * Persisting those nulls over a mid-event sync's real numbers would blank the
+ * column for the whole team, so a fresh null defers to what we already had.
+ */
+export function preserveOpr(
+  fresh: readonly EventTeam[],
+  previous: readonly EventTeam[],
+): EventTeam[] {
+  const prior = new Map(previous.map((t) => [t.teamNumber, t]));
+  return fresh.map((team) => {
+    if (team.opr != null) return team;
+    const before = prior.get(team.teamNumber);
+    if (before?.opr == null) return team;
+    return { ...team, opr: before.opr };
   });
 }
 

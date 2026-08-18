@@ -6,6 +6,7 @@ import {
   mapTeams,
   mapVenue,
   preserveEpa,
+  preserveOpr,
   searchEvents,
   teamKeyToNumber,
   type EventTeam,
@@ -64,6 +65,22 @@ describe("mapTeams", () => {
       { team: 254, epa: { total_points: 88.1 } },
     ]);
     expect(teams.find((t) => t.teamNumber === 254)?.epa).toBeCloseTo(88.1);
+  });
+
+  it("merges OPR in from TBA by team key", () => {
+    const teams = mapTeams(tbaTeams, statbotics, {
+      oprs: { frc254: 61.3, frc5806: 28.4 },
+    });
+    expect(teams.find((t) => t.teamNumber === 254)?.opr).toBeCloseTo(61.3);
+    expect(teams.find((t) => t.teamNumber === 5806)?.opr).toBeCloseTo(28.4);
+    // TBA only lists teams it could solve for; the rest read as no OPR.
+    expect(teams.find((t) => t.teamNumber === 9999)?.opr).toBeNull();
+  });
+
+  it("leaves OPR null when TBA has none yet", () => {
+    for (const teams of [mapTeams(tbaTeams, statbotics), mapTeams(tbaTeams, statbotics, { oprs: {} })]) {
+      expect(teams.every((t) => t.opr === null)).toBe(true);
+    }
   });
 
   it("leaves epa null for teams Statbotics doesn't know", () => {
@@ -345,5 +362,36 @@ describe("preserveEpa", () => {
     const merged = preserveEpa(fresh(null, 1234), previous);
     expect(merged).toHaveLength(1);
     expect(merged[0].teamNumber).toBe(1234);
+  });
+});
+
+describe("preserveOpr", () => {
+  const previous: EventTeam[] = [
+    { teamNumber: 5806, nickname: "Basement Lions", city: "Livingston", epa: null, epaRank: null, opr: 28.4 },
+  ];
+
+  function fresh(opr: number | null, teamNumber = 5806): EventTeam[] {
+    return [
+      { teamNumber, nickname: "Basement Lions", city: "Livingston", epa: null, epaRank: null, opr },
+    ];
+  }
+
+  it("carries prior OPR forward when TBA has none this sync", () => {
+    expect(preserveOpr(fresh(null), previous)[0].opr).toBeCloseTo(28.4);
+  });
+
+  it("keeps a fresh OPR over the prior value", () => {
+    expect(preserveOpr(fresh(31.9), previous)[0].opr).toBeCloseTo(31.9);
+  });
+
+  it("leaves OPR null for a team absent from the previous sync", () => {
+    expect(preserveOpr(fresh(null, 1234), previous)[0].opr).toBeNull();
+  });
+
+  it("treats a doc synced before OPR support as having none", () => {
+    const legacy: EventTeam[] = [
+      { teamNumber: 5806, nickname: "Basement Lions", city: "Livingston", epa: 41.7, epaRank: 1 },
+    ];
+    expect(preserveOpr(fresh(null), legacy)[0].opr).toBeNull();
   });
 });

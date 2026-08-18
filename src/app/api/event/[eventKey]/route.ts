@@ -3,6 +3,7 @@ import {
   mapTeams,
   mapVenue,
   type TbaEvent,
+  type TbaEventOprs,
   type TbaMatchSimple,
   type TbaTeamSimple,
 } from "@/lib/eventData";
@@ -38,6 +39,24 @@ async function tbaFetch<T>(path: string, apiKey: string): Promise<T> {
   return res.json() as Promise<T>;
 }
 
+/**
+ * OPRs are the one TBA endpoint that legitimately has nothing to return: it
+ * 404s (or comes back empty) until qualification MATCHES have been played. A
+ * missing OPR must not fail a sync that otherwise worked, so this swallows
+ * the error and the caller reports it as "no OPR" rather than "sync failed".
+ */
+async function tbaOprs(
+  eventKey: string,
+  apiKey: string,
+): Promise<TbaEventOprs | null> {
+  try {
+    const oprs = await tbaFetch<TbaEventOprs>(`/event/${eventKey}/oprs`, apiKey);
+    return oprs && typeof oprs.oprs === "object" ? oprs : null;
+  } catch {
+    return null;
+  }
+}
+
 export async function GET(
   _req: Request,
   { params }: { params: Promise<{ eventKey: string }> },
@@ -60,10 +79,11 @@ export async function GET(
   }
 
   try {
-    const [event, tbaTeams, tbaMatches] = await Promise.all([
+    const [event, tbaTeams, tbaMatches, oprs] = await Promise.all([
       tbaFetch<TbaEvent>(`/event/${eventKey}`, tbaApiKey),
       tbaFetch<TbaTeamSimple[]>(`/event/${eventKey}/teams/simple`, tbaApiKey),
       tbaFetch<TbaMatchSimple[]>(`/event/${eventKey}/matches/simple`, tbaApiKey),
+      tbaOprs(eventKey, tbaApiKey),
     ]);
 
     // Statbotics is keyless; EPA is nice-to-have, so failures degrade to
@@ -76,10 +96,13 @@ export async function GET(
     return Response.json({
       eventKey,
       eventName: event.name,
-      teams: mapTeams(tbaTeams, statbotics.ok ? statbotics.data : []),
+      teams: mapTeams(tbaTeams, statbotics.ok ? statbotics.data : [], oprs),
       matches: mapMatches(tbaMatches),
       venue: mapVenue(event),
       epaAvailable: statbotics.ok,
+      // Same reasoning as epaAvailable: "no OPR yet" and "OPR lookup failed"
+      // look identical in the payload, and the client persists this response.
+      oprAvailable: oprs !== null && Object.keys(oprs.oprs).length > 0,
     });
   } catch (err) {
     if (err instanceof HttpError) {

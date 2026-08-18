@@ -3,6 +3,7 @@
 import { useAuth } from "@/lib/auth/AuthProvider";
 import {
   preserveEpa,
+  preserveOpr,
   type EventData,
   type EventRankingRow,
   type EventSearchResult,
@@ -60,6 +61,7 @@ export default function EventPage() {
       const res = await fetch(`/api/event/${encodeURIComponent(key)}`);
       const body = (await res.json()) as EventData & {
         epaAvailable?: boolean;
+        oprAvailable?: boolean;
         error?: string;
       };
       if (!res.ok) {
@@ -72,11 +74,17 @@ export default function EventPage() {
 
       // Statbotics down: keep the EPA we already had rather than saving a full
       // column of nulls over it. Only meaningful when re-syncing the same event.
-      const { epaAvailable, error: _error, ...data } = body;
-      const teams =
-        epaAvailable === false && event?.eventKey === data.eventKey
-          ? preserveEpa(data.teams, event.teams)
-          : data.teams;
+      const { epaAvailable, oprAvailable, error: _error, ...data } = body;
+      const sameEvent = event?.eventKey === data.eventKey;
+      let teams = data.teams;
+      if (epaAvailable === false && sameEvent && event) {
+        teams = preserveEpa(teams, event.teams);
+      }
+      // TBA has no OPRs before quals are played, so an early sync returning
+      // none must not blank the numbers a later sync already gave us.
+      if (oprAvailable === false && sameEvent && event) {
+        teams = preserveOpr(teams, event.teams);
+      }
 
       await setDoc(doc(db, "teams", dataTeamId, "config", "event"), {
         ...data,
@@ -379,7 +387,7 @@ function TeamsTable({ event }: { event: EventData }) {
             <th className="px-3 py-2.5">Name</th>
             <th className="px-3 py-2.5">City</th>
             <th className="px-3 py-2.5">EPA</th>
-            <th className="px-3 py-2.5">EPA Rank</th>
+            <th className="px-3 py-2.5">OPR</th>
           </tr>
         </thead>
         <tbody className="divide-y divide-graphite-100">
@@ -396,7 +404,9 @@ function TeamsTable({ event }: { event: EventData }) {
               <td className="stat px-3 py-2">
                 {t.epa !== null ? t.epa.toFixed(1) : "—"}
               </td>
-              <td className="stat px-3 py-2">{t.epaRank ?? "—"}</td>
+              <td className="stat px-3 py-2">
+                {t.opr != null ? t.opr.toFixed(1) : "—"}
+              </td>
             </tr>
           ))}
         </tbody>

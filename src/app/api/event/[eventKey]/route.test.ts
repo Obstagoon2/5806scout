@@ -169,6 +169,72 @@ describe("GET /api/event/[eventKey]", () => {
     expect(body.epaAvailable).toBe(true);
   });
 
+  it("merges TBA OPRs into the team list", async () => {
+    mockGetServerConfig.mockReturnValue(serverConfig("key"));
+
+    const fetchMock = vi.fn(async (url: string) => {
+      if (url.includes("/oprs")) {
+        return jsonResponse({ oprs: { frc5806: 28.4 }, dprs: {}, ccwms: {} });
+      }
+      if (url.includes("/teams/simple")) {
+        return jsonResponse([
+          { team_number: 5806, nickname: "Basement Lions", city: "Livingston" },
+        ]);
+      }
+      if (url.includes("/matches/simple")) return jsonResponse([]);
+      if (url.includes("statbotics")) return jsonResponse([]);
+      return jsonResponse({
+        name: "Test Event",
+        location_name: null,
+        address: null,
+        city: null,
+        gmaps_url: null,
+        lat: null,
+        lng: null,
+      });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const res = await GET(new Request("http://test"), params("2026test"));
+    const body = (await res.json()) as EventData & { oprAvailable: boolean };
+    expect(body.teams[0].opr).toBeCloseTo(28.4);
+    expect(body.oprAvailable).toBe(true);
+  });
+
+  // TBA 404s this endpoint until quals have been played. That's the normal
+  // pre-event case, so it must not take the whole sync down with it.
+  it("still syncs when TBA has no OPRs yet", async () => {
+    mockGetServerConfig.mockReturnValue(serverConfig("key"));
+
+    const fetchMock = vi.fn(async (url: string) => {
+      if (url.includes("/oprs")) return jsonResponse({}, 404);
+      if (url.includes("/teams/simple")) {
+        return jsonResponse([
+          { team_number: 5806, nickname: "Basement Lions", city: "Livingston" },
+        ]);
+      }
+      if (url.includes("/matches/simple")) return jsonResponse([]);
+      if (url.includes("statbotics")) return jsonResponse([]);
+      return jsonResponse({
+        name: "Test Event",
+        location_name: null,
+        address: null,
+        city: null,
+        gmaps_url: null,
+        lat: null,
+        lng: null,
+      });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const res = await GET(new Request("http://test"), params("2026test"));
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as EventData & { oprAvailable: boolean };
+    expect(body.teams).toHaveLength(1);
+    expect(body.teams[0].opr).toBeNull();
+    expect(body.oprAvailable).toBe(false);
+  });
+
   // Regression: a Statbotics outage answers every endpoint with `500 {}` while
   // the host still serves 200s. Before this, the sync reported success with a
   // full column of null EPA, which the client persisted over good data.
