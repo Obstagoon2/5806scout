@@ -8,6 +8,12 @@ export interface PicklistDoc {
   order: number[];
   struck: number[];
   doNotPick?: number[];
+  /**
+   * Free-text scouting notes keyed by team number. Unlike the ranking these
+   * are written by anyone on the team, so they're saved as their own merge
+   * write — a scout typing a note must never overwrite the admin's order.
+   */
+  notes?: Record<string, string>;
   updatedAt: number;
 }
 
