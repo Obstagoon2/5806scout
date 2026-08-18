@@ -13,15 +13,8 @@ import { collection, onSnapshot, orderBy, query } from "firebase/firestore";
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 
-/** Team number that links to the admin-only breakdown page for admins. */
-function TeamNumber({
-  team,
-  isAdmin,
-}: {
-  team: string;
-  isAdmin: boolean;
-}) {
-  if (!isAdmin) return <>{team}</>;
+/** Team number, linking through to that team's full breakdown. */
+function TeamNumber({ team }: { team: string }) {
   return (
     <Link
       href={`/teams/${team}`}
@@ -35,8 +28,7 @@ function TeamNumber({
 type View = "raw" | "teams";
 
 export default function DataPage() {
-  const { dataTeamId, profile } = useAuth();
-  const isAdmin = profile?.role === "admin";
+  const { dataTeamId } = useAuth();
   // Columns follow this team's customized schema, not the static defaults.
   const { matchSections } = useScoutForms();
   const [view, setView] = useState<View>("raw");
@@ -172,7 +164,7 @@ export default function DataPage() {
                     <td className="stat px-3 py-2">Q{s.matchNumber}</td>
                     <td className="stat px-3 py-2">
                       <span className="inline-flex items-center gap-1.5">
-                        <TeamNumber team={s.scoutedTeam} isAdmin={isAdmin} />
+                        <TeamNumber team={s.scoutedTeam} />
                         <ReliabilityWarning
                           teamNumber={s.scoutedTeam}
                           matchNumber={s.matchNumber}
@@ -234,7 +226,7 @@ export default function DataPage() {
                 <tr key={agg.team} className="transition hover:bg-graphite-50">
                   <td className="stat px-3 py-2 font-semibold">
                     <span className="inline-flex items-center gap-1.5">
-                      <TeamNumber team={agg.team} isAdmin={isAdmin} />
+                      <TeamNumber team={agg.team} />
                       <ReliabilityWarning teamNumber={agg.team} />
                     </span>
                   </td>

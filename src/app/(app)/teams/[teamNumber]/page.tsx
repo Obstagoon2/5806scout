@@ -24,9 +24,8 @@ import { useEffect, useMemo, useState } from "react";
 
 export default function TeamDetailPage() {
   const { teamNumber } = useParams<{ teamNumber: string }>();
-  const { profile, dataTeamId } = useAuth();
+  const { dataTeamId } = useAuth();
   const { pitSections, matchSections } = useScoutForms();
-  const isAdmin = profile?.role === "admin";
 
   const [event, setEvent] = useState<EventData | null>(null);
   const [submissions, setSubmissions] = useState<MatchSubmission[]>([]);
@@ -35,16 +34,16 @@ export default function TeamDetailPage() {
   const [pitMedia, setPitMedia] = useState<FormValues | null>(null);
 
   useEffect(() => {
-    if (!dataTeamId || !isAdmin) return;
+    if (!dataTeamId) return;
     return onSnapshot(doc(db, "teams", dataTeamId, "config", "event"), (s) => {
       setEvent(s.exists() ? (s.data() as EventData) : null);
     });
-  }, [dataTeamId, isAdmin]);
+  }, [dataTeamId]);
 
   // Whole-collection listener (same as the Data page) so the event-wide
   // baseline behind the strengths/weaknesses chips stays live too.
   useEffect(() => {
-    if (!dataTeamId || !isAdmin) return;
+    if (!dataTeamId) return;
     return onSnapshot(
       query(
         collection(db, "teams", dataTeamId, "matchScouting"),
@@ -65,10 +64,10 @@ export default function TeamDetailPage() {
           }),
         ),
     );
-  }, [dataTeamId, isAdmin]);
+  }, [dataTeamId]);
 
   useEffect(() => {
-    if (!dataTeamId || !isAdmin || !teamNumber) return;
+    if (!dataTeamId || !teamNumber) return;
     const unsubPit = onSnapshot(
       doc(db, "teams", dataTeamId, "pitScouting", teamNumber),
       (s) => {
@@ -84,7 +83,7 @@ export default function TeamDetailPage() {
       unsubPit();
       unsubMedia();
     };
-  }, [dataTeamId, isAdmin, teamNumber]);
+  }, [dataTeamId, teamNumber]);
 
   const teamSubmissions = useMemo(
     () => submissions.filter((s) => s.scoutedTeam === teamNumber),
@@ -142,16 +141,6 @@ export default function TeamDetailPage() {
       event?.teams.find((t) => String(t.teamNumber) === teamNumber) ?? null,
     [event, teamNumber],
   );
-
-  if (profile && !isAdmin) {
-    return (
-      <main className="mx-auto flex w-full max-w-2xl flex-col gap-6 px-4 py-8 md:px-6">
-        <div className="rounded-lg border border-dashed border-graphite-300 bg-graphite-50 px-6 py-12 text-center text-sm text-graphite-500">
-          Team breakdowns are only available to admins.
-        </div>
-      </main>
-    );
-  }
 
   return (
     <main className="mx-auto flex w-full max-w-4xl flex-col gap-6 px-4 py-8 md:px-6">
