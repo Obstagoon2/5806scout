@@ -53,6 +53,20 @@ const STAT_MODE_BLURBS: Record<StatMode, string> = {
   iqr: "Median, then the interquartile range (Q3 − Q1) after it: the width of the middle half of their matches. Small spread means you can count on them.",
 };
 
+/** One counter's value from every listed submission; a blank reads as 0,
+ *  matching how aggregateByTeam counts an unanswered field. */
+function columnValues(
+  rows: readonly MatchSubmission[],
+  id: string,
+): number[] {
+  return rows.map((s) => (typeof s.values[id] === "number" ? (s.values[id] as number) : 0));
+}
+
+function mean(values: readonly number[]): number {
+  if (values.length === 0) return 0;
+  return values.reduce((sum, v) => sum + v, 0) / values.length;
+}
+
 function statHeader(mode: StatMode, label: string): string {
   if (mode === "mean") return `Avg ${label}`;
   if (mode === "median") return `Median ${label}`;
@@ -129,6 +143,16 @@ export default function DataPage() {
     [matchSections, submissions],
   );
 
+  // One pass over the filtered rows per counter, reused by the summary row's
+  // mean and its median/IQR rather than recomputed per cell.
+  const filteredColumns = useMemo(
+    () =>
+      Object.fromEntries(
+        counterIds.map((id) => [id, columnValues(filtered, id)] as const),
+      ) as Record<string, number[]>,
+    [counterIds, filtered],
+  );
+
   return (
     <main className="mx-auto flex w-full max-w-[1600px] flex-col gap-6 px-4 py-8 md:px-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -159,28 +183,26 @@ export default function DataPage() {
               </button>
             ))}
           </div>
-          {/* Sits beside the view switcher rather than above the table: it
-              only exists in the By Team view, so it has to appear right where
-              the eye already is when that view is chosen. */}
-          {view === "teams" && (
-            <div className="surface-card flex p-0.5">
-              {STAT_MODES.map((m) => (
-                <button
-                  key={m}
-                  type="button"
-                  onClick={() => setStatMode(m)}
-                  aria-pressed={statMode === m}
-                  className={`rounded px-3 py-1.5 text-sm font-medium transition ${
-                    statMode === m
-                      ? "bg-maroon-600 text-white"
-                      : "text-graphite-600 hover:text-graphite-900"
-                  }`}
-                >
-                  {STAT_MODE_LABELS[m]}
-                </button>
-              ))}
-            </div>
-          )}
+          {/* Beside the view switcher, not above the table — it drives both
+              views (the By Team columns and the Raw view's summary row) and
+              has to be where the eye already is. */}
+          <div className="surface-card flex p-0.5">
+            {STAT_MODES.map((m) => (
+              <button
+                key={m}
+                type="button"
+                onClick={() => setStatMode(m)}
+                aria-pressed={statMode === m}
+                className={`rounded px-3 py-1.5 text-sm font-medium transition ${
+                  statMode === m
+                    ? "bg-maroon-600 text-white"
+                    : "text-graphite-600 hover:text-graphite-900"
+                }`}
+              >
+                {STAT_MODE_LABELS[m]}
+              </button>
+            ))}
+          </div>
         </div>
       </div>
 
@@ -262,16 +284,39 @@ export default function DataPage() {
                   </tr>
                 )}
               </tbody>
+              {/* Summarises exactly the rows above, so narrowing the team or
+                  scout filter is how you ask for one team's median. */}
+              {filtered.length > 0 && (
+                <tfoot>
+                  <tr className="border-t-2 border-graphite-300 bg-graphite-50 font-semibold">
+                    <td className="px-3 py-2.5 text-xs uppercase tracking-wider text-graphite-500">
+                      {STAT_MODE_LABELS[statMode]}
+                    </td>
+                    <td className="stat px-3 py-2.5 text-graphite-500">
+                      {filtered.length} match{filtered.length === 1 ? "" : "es"}
+                    </td>
+                    <td className="px-3 py-2.5" />
+                    {counterIds.map((id) => (
+                      <td key={id} className="stat px-3 py-2.5">
+                        <CounterStat
+                          mode={statMode}
+                          mean={mean(filteredColumns[id])}
+                          samples={filteredColumns[id]}
+                        />
+                      </td>
+                    ))}
+                    <td className="px-3 py-2.5" />
+                  </tr>
+                </tfoot>
+              )}
             </table>
           </div>
         </>
       )}
 
-      {view === "teams" && (
-        <p className="-mt-3 text-xs text-graphite-500">
-          {STAT_MODE_BLURBS[statMode]}
-        </p>
-      )}
+      <p className="-mt-3 text-xs text-graphite-500">
+        {STAT_MODE_BLURBS[statMode]}
+      </p>
 
       {view === "teams" && (
         <div className="surface-card overflow-x-auto">
