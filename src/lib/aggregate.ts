@@ -17,6 +17,53 @@ export interface TeamAggregate {
   averages: Record<string, number>;
   /** Most common value for every select field id (null if never answered). */
   modes: Record<string, string | null>;
+  /**
+   * Every per-match value behind `averages`, one array per counter field id,
+   * so a view can ask for a median or a spread without re-grouping the
+   * submissions. `averages` stays the canonical figure — scoring, alliance
+   * odds, and the Drive Dash all read it and must not shift because someone
+   * changed how a table is displayed.
+   */
+  samples: Record<string, number[]>;
+}
+
+/**
+ * Percentile of an already-sorted sample by linear interpolation — the R-7
+ * definition NumPy, R, and Excel's PERCENTILE.INC all default to. Teams play
+ * eight to twelve quals, so the quartile definition visibly moves the number;
+ * this is the one people will have seen elsewhere.
+ */
+export function percentileOfSorted(
+  sorted: readonly number[],
+  p: number,
+): number | null {
+  if (sorted.length === 0) return null;
+  if (sorted.length === 1) return sorted[0];
+  const position = p * (sorted.length - 1);
+  const lower = Math.floor(position);
+  const upper = Math.ceil(position);
+  if (lower === upper) return sorted[lower];
+  return sorted[lower] + (position - lower) * (sorted[upper] - sorted[lower]);
+}
+
+function sortedCopy(values: readonly number[]): number[] {
+  return [...values].sort((a, b) => a - b);
+}
+
+/** Middle value — unmoved by the one match where everything went wrong. */
+export function median(values: readonly number[]): number | null {
+  return percentileOfSorted(sortedCopy(values), 0.5);
+}
+
+/**
+ * Q3 − Q1: how wide the middle half of a team's matches is. Small means you
+ * can count on them; large means their average is hiding a coin flip.
+ */
+export function interquartileRange(values: readonly number[]): number | null {
+  const sorted = sortedCopy(values);
+  const q1 = percentileOfSorted(sorted, 0.25);
+  const q3 = percentileOfSorted(sorted, 0.75);
+  return q1 === null || q3 === null ? null : q3 - q1;
 }
 
 export function counterFieldIds(sections: readonly FormSection[]): string[] {
@@ -48,12 +95,16 @@ export function aggregateByTeam(
   const aggregates: TeamAggregate[] = [];
   for (const [team, teamSubmissions] of byTeam) {
     const averages: Record<string, number> = {};
+    const samples: Record<string, number[]> = {};
     for (const id of counters) {
-      const total = teamSubmissions.reduce(
-        (sum, s) => sum + (typeof s.values[id] === "number" ? (s.values[id] as number) : 0),
-        0,
+      // A match that never answered this counter reads as 0, the same way it
+      // already counted toward the average — the mean and the median have to
+      // be describing the same set of matches.
+      const values = teamSubmissions.map((s) =>
+        typeof s.values[id] === "number" ? (s.values[id] as number) : 0,
       );
-      averages[id] = total / teamSubmissions.length;
+      samples[id] = values;
+      averages[id] = values.reduce((sum, v) => sum + v, 0) / values.length;
     }
 
     const modes: Record<string, string | null> = {};
@@ -76,7 +127,13 @@ export function aggregateByTeam(
       modes[id] = best;
     }
 
-    aggregates.push({ team, matches: teamSubmissions.length, averages, modes });
+    aggregates.push({
+      team,
+      matches: teamSubmissions.length,
+      averages,
+      modes,
+      samples,
+    });
   }
 
   return aggregates.sort((a, b) => a.team.localeCompare(b.team, undefined, { numeric: true }));

@@ -5,8 +5,11 @@ import { db } from "@/lib/firebase/client";
 import {
   aggregateByTeam,
   counterFieldIds,
+  interquartileRange,
+  median,
   type MatchSubmission,
 } from "@/lib/aggregate";
+import { useStoredPreference } from "@/lib/storedPreference";
 import { ReliabilityWarning } from "@/components/ReliabilityFlags";
 import { useScoutForms } from "@/lib/useScoutForms";
 import { collection, onSnapshot, orderBy, query } from "firebase/firestore";
@@ -27,11 +30,45 @@ function TeamNumber({ team }: { team: string }) {
 
 type View = "raw" | "teams";
 
+/**
+ * Which figure the By Team table reports. Mean is what every other screen
+ * uses; median ignores the one match a robot spent tipped over; IQR mode
+ * pairs that median with the width of the middle half of their matches, so a
+ * dependable team and a coin flip with the same median stop looking alike.
+ */
+type StatMode = "mean" | "median" | "iqr";
+
+const STAT_MODES: readonly StatMode[] = ["mean", "median", "iqr"];
+
+const STAT_MODE_LABELS: Record<StatMode, string> = {
+  mean: "Mean",
+  median: "Median",
+  iqr: "Median ±IQR",
+};
+
+const STAT_MODE_BLURBS: Record<StatMode, string> = {
+  mean: "Average per match — the same figure the Picklist and Drive Dash use.",
+  median:
+    "Middle match, so one blown match or one lucky one doesn't move the number.",
+  iqr: "Median, then the interquartile range (Q3 − Q1) after it: the width of the middle half of their matches. Small spread means you can count on them.",
+};
+
+function statHeader(mode: StatMode, label: string): string {
+  if (mode === "mean") return `Avg ${label}`;
+  if (mode === "median") return `Median ${label}`;
+  return `Median ±IQR ${label}`;
+}
+
 export default function DataPage() {
   const { dataTeamId } = useAuth();
   // Columns follow this team's customized schema, not the static defaults.
   const { matchSections } = useScoutForms();
   const [view, setView] = useState<View>("raw");
+  const [statMode, setStatMode] = useStoredPreference<StatMode>(
+    "data.statMode",
+    STAT_MODES,
+    "mean",
+  );
   const [submissions, setSubmissions] = useState<MatchSubmission[]>([]);
   const [teamFilter, setTeamFilter] = useState("");
   const [scoutFilter, setScoutFilter] = useState("");
@@ -207,6 +244,29 @@ export default function DataPage() {
       )}
 
       {view === "teams" && (
+        <div className="flex flex-col gap-1.5">
+          <div className="surface-card flex w-fit p-0.5">
+            {STAT_MODES.map((m) => (
+              <button
+                key={m}
+                type="button"
+                onClick={() => setStatMode(m)}
+                aria-pressed={statMode === m}
+                className={`rounded px-3.5 py-1.5 text-sm font-medium transition ${
+                  statMode === m
+                    ? "bg-maroon-600 text-white"
+                    : "text-graphite-600 hover:text-graphite-900"
+                }`}
+              >
+                {STAT_MODE_LABELS[m]}
+              </button>
+            ))}
+          </div>
+          <p className="text-xs text-graphite-500">{STAT_MODE_BLURBS[statMode]}</p>
+        </div>
+      )}
+
+      {view === "teams" && (
         <div className="surface-card overflow-x-auto">
           <table className="w-full min-w-max text-left text-sm">
             <thead>
@@ -215,7 +275,7 @@ export default function DataPage() {
                 <th className="px-3 py-2.5">Matches</th>
                 {counterIds.map((id) => (
                   <th key={id} className="px-3 py-2.5">
-                    Avg {fieldLabels[id]}
+                    {statHeader(statMode, fieldLabels[id])}
                   </th>
                 ))}
                 <th className="px-3 py-2.5">Typical endgame</th>
@@ -233,7 +293,11 @@ export default function DataPage() {
                   <td className="stat px-3 py-2">{agg.matches}</td>
                   {counterIds.map((id) => (
                     <td key={id} className="stat px-3 py-2">
-                      {(agg.averages[id] ?? 0).toFixed(1)}
+                      <CounterStat
+                        mode={statMode}
+                        mean={agg.averages[id] ?? 0}
+                        samples={agg.samples[id] ?? []}
+                      />
                     </td>
                   ))}
                   <td className="px-3 py-2 text-graphite-600">
@@ -256,5 +320,37 @@ export default function DataPage() {
         </div>
       )}
     </main>
+  );
+}
+
+/** One counter's figure, in whichever form the By Team toggle asked for. */
+function CounterStat({
+  mode,
+  mean,
+  samples,
+}: {
+  mode: StatMode;
+  mean: number;
+  samples: readonly number[];
+}) {
+  if (mode === "mean") return <>{mean.toFixed(1)}</>;
+
+  const middle = median(samples);
+  if (middle === null) return <>—</>;
+  if (mode === "median") return <>{middle.toFixed(1)}</>;
+
+  const spread = interquartileRange(samples);
+  return (
+    <>
+      {middle.toFixed(1)}
+      {spread !== null && (
+        <span
+          className="ml-1 text-graphite-400"
+          title="Interquartile range (Q3 − Q1) — the width of the middle half of their matches"
+        >
+          ±{spread.toFixed(1)}
+        </span>
+      )}
+    </>
   );
 }

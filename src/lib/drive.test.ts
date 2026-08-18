@@ -33,7 +33,7 @@ function aggregate(
   averages: Record<string, number>,
   matches = 4,
 ): TeamAggregate {
-  return { team, matches, averages, modes: { endgame: "Climb" } };
+  return { team, matches, averages, modes: { endgame: "Climb" }, samples: {} };
 }
 
 function eventTeam(teamNumber: number, epa: number | null): EventTeam {
@@ -72,6 +72,7 @@ describe("scoutedPoints", () => {
       matches: 4,
       averages: { low: 3 },
       modes: { endgame: "Level 2", autoClimb: "Climbed (L1)" },
+      samples: {},
     };
     expect(scoutedPoints(SECTIONS, agg, {})).toBe(3 + 20 + 15);
   });
@@ -82,6 +83,7 @@ describe("scoutedPoints", () => {
       matches: 4,
       averages: {},
       modes: { endgame: "Failed attempt", autoClimb: "No attempt" },
+      samples: {},
     };
     expect(scoutedPoints(SECTIONS, agg, {})).toBe(0);
   });
@@ -240,6 +242,7 @@ describe("scoutedPoints with team-added counters", () => {
       matches: 4,
       averages: { low: 3, custom_cycles: 9 },
       modes: {},
+      samples: {},
     };
     expect(scoutedPoints(sections, agg, {})).toBe(3);
   });
