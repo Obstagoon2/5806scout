@@ -142,21 +142,45 @@ export default function DataPage() {
             updates live.
           </p>
         </div>
-        <div className="surface-card flex p-0.5">
-          {(["raw", "teams"] as const).map((v) => (
-            <button
-              key={v}
-              type="button"
-              onClick={() => setView(v)}
-              className={`rounded px-3.5 py-1.5 text-sm font-medium transition ${
-                view === v
-                  ? "bg-maroon-600 text-white"
-                  : "text-graphite-600 hover:text-graphite-900"
-              }`}
-            >
-              {v === "raw" ? "Raw" : "By Team"}
-            </button>
-          ))}
+        <div className="flex flex-wrap items-end gap-2">
+          <div className="surface-card flex p-0.5">
+            {(["raw", "teams"] as const).map((v) => (
+              <button
+                key={v}
+                type="button"
+                onClick={() => setView(v)}
+                className={`rounded px-3.5 py-1.5 text-sm font-medium transition ${
+                  view === v
+                    ? "bg-maroon-600 text-white"
+                    : "text-graphite-600 hover:text-graphite-900"
+                }`}
+              >
+                {v === "raw" ? "Raw" : "By Team"}
+              </button>
+            ))}
+          </div>
+          {/* Sits beside the view switcher rather than above the table: it
+              only exists in the By Team view, so it has to appear right where
+              the eye already is when that view is chosen. */}
+          {view === "teams" && (
+            <div className="surface-card flex p-0.5">
+              {STAT_MODES.map((m) => (
+                <button
+                  key={m}
+                  type="button"
+                  onClick={() => setStatMode(m)}
+                  aria-pressed={statMode === m}
+                  className={`rounded px-3 py-1.5 text-sm font-medium transition ${
+                    statMode === m
+                      ? "bg-maroon-600 text-white"
+                      : "text-graphite-600 hover:text-graphite-900"
+                  }`}
+                >
+                  {STAT_MODE_LABELS[m]}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
       </div>
 
@@ -244,26 +268,9 @@ export default function DataPage() {
       )}
 
       {view === "teams" && (
-        <div className="flex flex-col gap-1.5">
-          <div className="surface-card flex w-fit p-0.5">
-            {STAT_MODES.map((m) => (
-              <button
-                key={m}
-                type="button"
-                onClick={() => setStatMode(m)}
-                aria-pressed={statMode === m}
-                className={`rounded px-3.5 py-1.5 text-sm font-medium transition ${
-                  statMode === m
-                    ? "bg-maroon-600 text-white"
-                    : "text-graphite-600 hover:text-graphite-900"
-                }`}
-              >
-                {STAT_MODE_LABELS[m]}
-              </button>
-            ))}
-          </div>
-          <p className="text-xs text-graphite-500">{STAT_MODE_BLURBS[statMode]}</p>
-        </div>
+        <p className="-mt-3 text-xs text-graphite-500">
+          {STAT_MODE_BLURBS[statMode]}
+        </p>
       )}
 
       {view === "teams" && (
