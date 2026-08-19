@@ -15,6 +15,9 @@ export function isNavItemActive(pathname: string, href: string): boolean {
 }
 
 export const NAV_ITEMS: NavItem[] = [
+  // Role-split: scouts get their own work list, admins the crew-wide picture.
+  // Both roles get something, so it isn't adminOnly.
+  { href: "/dashboard", label: "Dashboard" },
   { href: "/pit-scout", label: "Pit Scout" },
   { href: "/pit-dashboard", label: "Pit Dash", adminOnly: true },
   { href: "/match-scout", label: "Match Scout" },
