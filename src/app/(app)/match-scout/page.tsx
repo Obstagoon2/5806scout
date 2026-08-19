@@ -1,11 +1,13 @@
 "use client";
 
 import { DrawingPad } from "@/components/DrawingPad";
+import { DeepLinkParams } from "@/components/DeepLinkParams";
 import { MyMatchAssignments } from "@/components/MyAssignments";
 import { ReliabilityWarning } from "@/components/ReliabilityFlags";
 import { SchemaField } from "@/components/SchemaForm";
 import { slotKey, type MatchSlot } from "@/lib/assignments";
 import { useAuth } from "@/lib/auth/AuthProvider";
+import { MATCH_LINK_PARAMS, slotFromParams } from "@/lib/dashboard";
 import { db } from "@/lib/firebase/client";
 import {
   emptyValues,
@@ -716,6 +718,20 @@ export default function MatchScoutPage() {
           handful with the +5/+10 buttons.
         </p>
       </div>
+
+      <DeepLinkParams
+        names={MATCH_LINK_PARAMS}
+        onRead={(values) => {
+          if (values.match) setMatchNumber(values.match);
+          if (values.team) setScoutedTeam(values.team);
+          if (values.alliance === "red" || values.alliance === "blue") {
+            setAlliance(values.alliance);
+          }
+          // Only set when the link carried a full slot; a partial one leaves
+          // pickedSlot null so submitting can't cross off the wrong row.
+          setPickedSlot(slotFromParams(values, user?.uid ?? ""));
+        }}
+      />
 
       <MyMatchAssignments
         onPick={(slot) => {

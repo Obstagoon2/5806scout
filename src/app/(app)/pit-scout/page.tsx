@@ -1,5 +1,6 @@
 "use client";
 
+import { DeepLinkParams } from "@/components/DeepLinkParams";
 import { MyPitAssignments } from "@/components/MyAssignments";
 import { SchemaForm } from "@/components/SchemaForm";
 import { useAuth } from "@/lib/auth/AuthProvider";
@@ -24,7 +25,10 @@ import {
   setDoc,
   updateDoc,
 } from "firebase/firestore";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+
+/** Module-level so the deep-link reader's props stay referentially stable. */
+const PIT_LINK_PARAMS = ["team"] as const;
 
 type Status =
   | { state: "idle" }
@@ -39,6 +43,13 @@ export default function PitScoutPage() {
   const [scoutedTeams, setScoutedTeams] = useState<string[]>([]);
   const [teamInput, setTeamInput] = useState("");
   const [activeTeam, setActiveTeam] = useState<string | null>(null);
+  // A team arriving via /pit-scout?team=N, held until the auth team doc
+  // resolves — openTeam() needs dataTeamId and a deep link routinely beats it.
+  const [requestedTeam, setRequestedTeam] = useState<string | null>(null);
+  // Which deep link has already been opened. A ref rather than clearing the
+  // state above: reopening the form would discard whatever the scout has
+  // typed since, and the guard has to survive re-renders without causing one.
+  const openedLink = useRef<string | null>(null);
   const [values, setValues] = useState<FormValues>(() =>
     emptyValues(pitSections),
   );
@@ -49,6 +60,16 @@ export default function PitScoutPage() {
     // new fields without losing what's already typed.
     setValues((prev) => ({ ...emptyValues(pitSections), ...prev }));
   }, [pitSections]);
+
+  useEffect(() => {
+    if (!requestedTeam || !dataTeamId) return;
+    if (openedLink.current === requestedTeam) return;
+    openedLink.current = requestedTeam;
+    void openTeam(requestedTeam);
+    // openTeam is recreated every render but is a one-shot handoff here;
+    // listing it would refetch the form and discard in-progress answers.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [requestedTeam, dataTeamId]);
 
   useEffect(() => {
     // Pit forms live in the shared store so a sister pair pools its data.
@@ -157,6 +178,11 @@ export default function PitScoutPage() {
           One form per robot — filled out in the pit, editable any time.
         </p>
       </div>
+
+      <DeepLinkParams
+        names={PIT_LINK_PARAMS}
+        onRead={(values) => setRequestedTeam(values.team ?? null)}
+      />
 
       <MyPitAssignments
         activeTeam={activeTeam}
