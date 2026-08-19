@@ -4,6 +4,18 @@ vi.mock("@/lib/serverConfig", () => ({
   getServerConfig: vi.fn(),
 }));
 
+// The route now identifies its caller before spending the team's AI quota.
+// Signed in by default here so the existing cases still exercise the RAG
+// paths; the auth guard itself is covered separately below.
+let callerUid: string | null = "scout-uid";
+vi.mock("@/lib/verifyCaller", () => ({
+  bearerToken: (r: Request) => {
+    const h = r.headers.get("authorization") ?? "";
+    return h.startsWith("Bearer ") ? h.slice(7) || null : null;
+  },
+  uidFromIdToken: async () => callerUid,
+}));
+
 import { getServerConfig } from "@/lib/serverConfig";
 import { GET, POST } from "./route";
 
@@ -25,6 +37,7 @@ const CONFIG = {
 function req(body: unknown): Request {
   return new Request("http://test", {
     method: "POST",
+    headers: { Authorization: "Bearer test-id-token" },
     body: JSON.stringify(body),
   });
 }
@@ -38,6 +51,15 @@ afterEach(() => {
 });
 
 describe("GET /api/manual-qa", () => {
+  it("refuses an unauthenticated ask — it spends the team's AI quota", () => {
+    callerUid = null;
+    return POST(req({ question: "frame perimeter rule" })).then(async (res) => {
+      callerUid = "scout-uid";
+      expect(res.status).toBe(401);
+      expect(mockFetch).not.toHaveBeenCalled();
+    });
+  });
+
   it("reports ready with the vector count once indexing completed", async () => {
     mockGetServerConfig.mockReturnValue(CONFIG);
     mockFetch.mockResolvedValue(

@@ -64,8 +64,12 @@ export default function PitScoutPage() {
   useEffect(() => {
     if (!requestedTeam || !dataTeamId) return;
     if (openedLink.current === requestedTeam) return;
-    openedLink.current = requestedTeam;
-    void openTeam(requestedTeam);
+    // Latched only once the robot is actually open. Burning the guard up
+    // front meant a link that failed offline could never retry, even after
+    // signal came back.
+    void openTeam(requestedTeam).then((opened) => {
+      if (opened) openedLink.current = requestedTeam;
+    });
     // openTeam is recreated every render but is a one-shot handoff here;
     // listing it would refetch the form and discard in-progress answers.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -80,26 +84,49 @@ export default function PitScoutPage() {
     );
   }, [dataTeamId]);
 
-  async function openTeam(teamNumber: string) {
-    if (!dataTeamId) return;
+  async function openTeam(teamNumber: string): Promise<boolean> {
+    if (!dataTeamId) return false;
     const trimmed = teamNumber.trim();
-    if (!trimmed) return;
+    if (!trimmed) return false;
 
     setStatus({ state: "idle" });
-    setActiveTeam(trimmed);
     setTeamInput("");
 
     // Photos and drawings live in a sibling doc (see formMedia.ts) — fetch
     // both and reassemble one set of answers for the form.
-    const [snapshot, mediaSnapshot] = await Promise.all([
-      getDoc(doc(db, "teams", dataTeamId, "pitScouting", trimmed)),
-      getDoc(doc(db, "teams", dataTeamId, PIT_MEDIA_COLLECTION, trimmed)),
-    ]);
+    //
+    // The media doc has no listener warming the cache, so offline its read
+    // rejects outright; it's optional, so a failure there must not stop the
+    // robot opening. The core doc IS cached, by the collection listener above.
+    let snapshot;
+    let mediaSnapshot = null;
+    try {
+      [snapshot, mediaSnapshot] = await Promise.all([
+        getDoc(doc(db, "teams", dataTeamId, "pitScouting", trimmed)),
+        getDoc(doc(db, "teams", dataTeamId, PIT_MEDIA_COLLECTION, trimmed)).catch(
+          () => null,
+        ),
+      ]);
+    } catch {
+      // Leave activeTeam and values alone. Switching the header to a robot
+      // whose answers never arrived would leave the PREVIOUS robot's answers
+      // in the form, and saving merges them onto the new team's document.
+      setStatus({
+        state: "error",
+        message: `Couldn't open ${trimmed} — you may be offline. Try again.`,
+      });
+      return false;
+    }
+
+    // Committed together, so the form never shows one robot's number over
+    // another robot's answers.
+    setActiveTeam(trimmed);
     setValues({
       ...emptyValues(pitSections),
       ...(snapshot.data()?.values as FormValues | undefined),
-      ...(mediaSnapshot.data()?.values as FormValues | undefined),
+      ...(mediaSnapshot?.data()?.values as FormValues | undefined),
     });
+    return true;
   }
 
   function handleSave() {

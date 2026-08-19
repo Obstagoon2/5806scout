@@ -75,9 +75,12 @@ interface UnassignedTalkie {
 }
 
 /** Roster for both teams of a sister pair, which pool their scouts. */
-function useCrew(): UserProfile[] {
+function useCrew(): { roster: UserProfile[]; failed: boolean } {
   const { profile, team } = useAuth();
   const [roster, setRoster] = useState<UserProfile[]>([]);
+  // Keyed by team rather than a plain boolean, so switching team clears the
+  // warning as a derived value instead of a reset written from the effect.
+  const [failedFor, setFailedFor] = useState<string | null>(null);
 
   useEffect(() => {
     if (!profile) return;
@@ -110,17 +113,24 @@ function useCrew(): UserProfile[] {
               .sort((a, b) => a.fullName.localeCompare(b.fullName)),
           );
         },
+        // A half-loaded roster silently shortens the crew list, which reads
+        // as "fewer people to chase" rather than as a failure.
+        () => setFailedFor(profile.teamId),
       ),
     );
     return () => unsubs.forEach((unsub) => unsub());
   }, [profile, team?.sisterTeamId]);
 
-  return roster;
+  return {
+    roster,
+    failed: failedFor !== null && failedFor === profile?.teamId,
+  };
 }
 
 function UnassignedTalkies({ roster }: { roster: UserProfile[] }) {
   const { dataTeamId } = useAuth();
   const [talkies, setTalkies] = useState<UnassignedTalkie[]>([]);
+  const [loadError, setLoadError] = useState(false);
 
   useEffect(() => {
     if (!dataTeamId) return;
@@ -152,6 +162,7 @@ function UnassignedTalkies({ roster }: { roster: UserProfile[] }) {
               };
             }),
         ),
+      () => setLoadError(true),
     );
   }, [dataTeamId]);
 
@@ -182,7 +193,11 @@ function UnassignedTalkies({ roster }: { roster: UserProfile[] }) {
         <span className="stat text-xs text-graphite-500">{talkies.length}</span>
       </h2>
 
-      {talkies.length === 0 ? (
+      {loadError ? (
+        <p className="badge-error rounded-md px-3 py-2 text-sm normal-case tracking-normal">
+          Couldn&apos;t load the talkie board — this list may be incomplete.
+        </p>
+      ) : talkies.length === 0 ? (
         <p className="text-sm text-graphite-500">
           Every request has someone on it.
         </p>
@@ -256,7 +271,13 @@ function StatusRow({ status }: { status: ScoutStatus }) {
   );
 }
 
-function CrewStatus({ roster }: { roster: UserProfile[] }) {
+function CrewStatus({
+  roster,
+  rosterFailed,
+}: {
+  roster: UserProfile[];
+  rosterFailed: boolean;
+}) {
   const { dataTeamId } = useAuth();
   const [duties, setDuties] = useState<ScoutDutiesDoc | null>(null);
   const [pitDoc, setPitDoc] = useState<PitAssignmentsDoc | null>(null);
@@ -265,22 +286,38 @@ function CrewStatus({ roster }: { roster: UserProfile[] }) {
   const [liveMatches, setLiveMatches] = useState<EventMatch[]>([]);
   const [lastByUid, setLastByUid] = useState<Record<string, number>>({});
   const [now, setNow] = useState(() => Date.now());
+  // A failed read must never read as good news: with matchAssignments missing
+  // every scout computes as unassigned, nobody needs chasing, and the panel
+  // would cheerfully say "Everyone is keeping up" — the precise false
+  // negative this section exists to prevent.
+  const [failedFor, setFailedFor] = useState<string | null>(null);
+  const loadFailed = failedFor !== null && failedFor === dataTeamId;
 
   useEffect(() => {
     if (!dataTeamId) return;
     const teamId = dataTeamId;
+    const fail = () => setFailedFor(teamId);
     const unsubs = [
-      onSnapshot(doc(db, "teams", teamId, "config", SCOUT_DUTIES_DOC_ID), (s) =>
-        setDuties(sanitizeScoutDutiesDoc(s.data())),
+      onSnapshot(
+        doc(db, "teams", teamId, "config", SCOUT_DUTIES_DOC_ID),
+        (s) => setDuties(sanitizeScoutDutiesDoc(s.data())),
+        fail,
       ),
-      onSnapshot(doc(db, "teams", teamId, "config", "pitAssignments"), (s) =>
-        setPitDoc(s.exists() ? (s.data() as PitAssignmentsDoc) : null),
+      onSnapshot(
+        doc(db, "teams", teamId, "config", "pitAssignments"),
+        (s) => setPitDoc(s.exists() ? (s.data() as PitAssignmentsDoc) : null),
+        fail,
       ),
-      onSnapshot(doc(db, "teams", teamId, "config", "matchAssignments"), (s) =>
-        setMatchDoc(s.exists() ? (s.data() as MatchAssignmentsDoc) : null),
+      onSnapshot(
+        doc(db, "teams", teamId, "config", "matchAssignments"),
+        (s) =>
+          setMatchDoc(s.exists() ? (s.data() as MatchAssignmentsDoc) : null),
+        fail,
       ),
-      onSnapshot(doc(db, "teams", teamId, "config", "event"), (s) =>
-        setEvent(s.exists() ? (s.data() as EventData) : null),
+      onSnapshot(
+        doc(db, "teams", teamId, "config", "event"),
+        (s) => setEvent(s.exists() ? (s.data() as EventData) : null),
+        fail,
       ),
     ];
     return () => unsubs.forEach((unsub) => unsub());
@@ -322,9 +359,12 @@ function CrewStatus({ roster }: { roster: UserProfile[] }) {
       return entries;
     }
 
+    const fail = () => setFailedFor(teamId);
     const unsubs = [
-      onSnapshot(collection(db, "teams", teamId, "pitScouting"), (snapshot) =>
-        merge("pit", collect(snapshot.docs, "updatedAt")),
+      onSnapshot(
+        collection(db, "teams", teamId, "pitScouting"),
+        (snapshot) => merge("pit", collect(snapshot.docs, "updatedAt")),
+        fail,
       ),
       onSnapshot(
         query(
@@ -333,6 +373,7 @@ function CrewStatus({ roster }: { roster: UserProfile[] }) {
           limit(RECENT_SUBMISSION_LIMIT),
         ),
         (snapshot) => merge("match", collect(snapshot.docs, "createdAt")),
+        fail,
       ),
     ];
     return () => unsubs.forEach((unsub) => unsub());
@@ -385,17 +426,25 @@ function CrewStatus({ roster }: { roster: UserProfile[] }) {
   );
 
   const chasing = needsAttention(statuses);
+  const incomplete = loadFailed || rosterFailed;
 
   return (
     <section className="surface-card flex flex-col gap-3 p-4">
       <h2 className="flex items-baseline justify-between gap-2">
         <span className="section-title">Crew status</span>
-        <span className="stat text-xs text-graphite-500">
-          {chasing.length} of {statuses.length} need chasing
-        </span>
+        {!incomplete && (
+          <span className="stat text-xs text-graphite-500">
+            {chasing.length} of {statuses.length} need chasing
+          </span>
+        )}
       </h2>
 
-      {statuses.length === 0 ? (
+      {incomplete ? (
+        <p className="badge-error rounded-md px-3 py-2 text-sm normal-case tracking-normal">
+          Couldn&apos;t load assignments or submissions, so this list is
+          incomplete — don&apos;t read it as everyone being on track.
+        </p>
+      ) : statuses.length === 0 ? (
         <p className="text-sm text-graphite-500">
           Nobody is in a scouting rotation yet — set duties on the{" "}
           <Link href="/team" className="underline">
@@ -423,7 +472,7 @@ function CrewStatus({ roster }: { roster: UserProfile[] }) {
 
 export function AdminDashboard() {
   const { profile } = useAuth();
-  const roster = useCrew();
+  const { roster, failed: rosterFailed } = useCrew();
 
   return (
     <div className="flex flex-col gap-4">
@@ -438,7 +487,7 @@ export function AdminDashboard() {
       </div>
 
       <UnassignedTalkies roster={roster} />
-      <CrewStatus roster={roster} />
+      <CrewStatus roster={roster} rosterFailed={rosterFailed} />
     </div>
   );
 }

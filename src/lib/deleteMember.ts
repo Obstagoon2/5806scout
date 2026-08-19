@@ -27,7 +27,13 @@ export class DeleteMemberError extends Error {
 }
 
 function firestoreDocUrl(uid: string): string {
-  return `https://firestore.googleapis.com/v1/projects/${config.firebase.projectId}/databases/(default)/documents/users/${uid}`;
+  // Encoded, not interpolated raw: this URL is handed to a DELETE that runs
+  // with service-account credentials outranking firestore.rules, so a uid
+  // carrying "/" or ".." must not be able to normalize into another
+  // document's path. The route validates the shape too — belt and braces,
+  // because the checks that happen to stop it today (the same-team guard,
+  // identitytoolkit rejecting a non-uid) are incidental, not a boundary.
+  return `https://firestore.googleapis.com/v1/projects/${config.firebase.projectId}/databases/(default)/documents/users/${encodeURIComponent(uid)}`;
 }
 
 interface MemberProfile {

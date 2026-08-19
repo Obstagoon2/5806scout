@@ -1,5 +1,6 @@
 "use client";
 
+import { useAuth } from "@/lib/auth/AuthProvider";
 import { useEffect, useState } from "react";
 
 // The manual itself is ingested at build/setup time (npm run ingest-manual)
@@ -19,6 +20,7 @@ interface QaTurn {
 const inputClass = "field-input";
 
 export default function ManualQaPage() {
+  const { user } = useAuth();
   const [status, setStatus] = useState<ManualStatus | null>(null);
   const [question, setQuestion] = useState("");
   const [turns, setTurns] = useState<QaTurn[]>([]);
@@ -50,9 +52,15 @@ export default function ManualQaPage() {
     setTurns((prev) => [...prev, { question: q, answer: null }]);
 
     try {
+      // The route bills the team's own AI account per answer, so it only
+      // serves signed-in members.
+      const idToken = await user?.getIdToken();
       const res = await fetch("/api/manual-qa", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          ...(idToken ? { Authorization: `Bearer ${idToken}` } : {}),
+        },
         body: JSON.stringify({ question: q }),
       });
       const body = (await res.json()) as { answer?: string; error?: string };

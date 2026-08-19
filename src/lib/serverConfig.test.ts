@@ -3,13 +3,10 @@ import { getServerConfig } from "./serverConfig";
 
 const ORIGINAL_ENV = { ...process.env };
 
-const DEFAULT_RAG_URL = "https://soft-hill-26e4.nakul-sethi-212.workers.dev";
-const DEFAULT_CF_ACCOUNT_ID = "77886244760af9d4f07c7394b8d4cd00";
-const DEFAULT_CF_AI_SEARCH_INSTANCE = "game-manual-2026";
-
 describe("getServerConfig", () => {
   beforeEach(() => {
     delete process.env.TBA_API_KEY;
+    delete process.env.NEXUS_API_KEY;
     delete process.env.MANUAL_QA_RAG_URL;
     delete process.env.CF_ACCOUNT_ID;
     delete process.env.CF_AI_SEARCH_INSTANCE;
@@ -20,13 +17,16 @@ describe("getServerConfig", () => {
     process.env = { ...ORIGINAL_ENV };
   });
 
-  it("returns null for unset optional keys and the built-in defaults", () => {
+  it("returns null for every unset key — nothing is baked into the source", () => {
+    // The account id, instance and worker URL used to have working defaults.
+    // A public repo must not ship someone's account in it, so a fresh
+    // checkout is inert until it's pointed at its own Cloudflare project.
     expect(getServerConfig()).toEqual({
       tbaApiKey: null,
       nexusApiKey: null,
-      manualQaRagUrl: DEFAULT_RAG_URL,
-      cfAccountId: DEFAULT_CF_ACCOUNT_ID,
-      cfAiSearchInstance: DEFAULT_CF_AI_SEARCH_INSTANCE,
+      manualQaRagUrl: null,
+      cfAccountId: null,
+      cfAiSearchInstance: null,
       cfAiSearchToken: null,
     });
   });

@@ -32,6 +32,12 @@ export async function POST(req: Request): Promise<Response> {
       { status: 400 },
     );
   }
+  // Firebase uids are alphanumeric and at most 128 chars. Rejecting anything
+  // else here keeps a hostile value out of the privileged REST paths this
+  // route builds downstream, rather than relying on those to be safe.
+  if (!/^[A-Za-z0-9]{1,128}$/.test(uid)) {
+    return Response.json({ error: "Invalid member id." }, { status: 400 });
+  }
 
   try {
     const result = await deleteMember(idToken, uid);

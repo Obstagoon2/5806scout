@@ -1,4 +1,5 @@
 import { getServerConfig } from "@/lib/serverConfig";
+import { bearerToken, uidFromIdToken } from "@/lib/verifyCaller";
 
 // Manual Q&A is RAG (retrieval + generation) over the official game-manual PDF,
 // indexed by a Cloudflare AI Search instance. This route runs the RAG itself:
@@ -123,7 +124,9 @@ function mapSources(chunks: unknown): Source[] {
 async function askViaAiSearch(question: string): Promise<AskResult | null> {
   const { cfAccountId, cfAiSearchInstance, cfAiSearchToken } =
     getServerConfig();
-  if (!cfAiSearchToken) return null;
+  // All three are needed to address an instance; a partial config falls back
+  // to the worker rather than building a URL with "null" in the path.
+  if (!cfAiSearchToken || !cfAccountId || !cfAiSearchInstance) return null;
   try {
     const res = await fetch(
       `https://api.cloudflare.com/client/v4/accounts/${cfAccountId}/ai-search/instances/${cfAiSearchInstance}/chat/completions`,
@@ -176,6 +179,7 @@ async function askViaAiSearch(question: string): Promise<AskResult | null> {
 /** Fallback: the public Cloudflare worker proxy. Returns null on any failure. */
 async function askViaWorker(question: string): Promise<AskResult | null> {
   const { manualQaRagUrl } = getServerConfig();
+  if (!manualQaRagUrl) return null;
   try {
     const res = await fetch(`${manualQaRagUrl}/api/ask`, {
       method: "POST",
@@ -197,6 +201,10 @@ export async function GET(): Promise<Response> {
   if (cfAiSearchToken) {
     return Response.json({ ready: true, chunkCount: 0 });
   }
+  // Neither path configured — the page shows its "manual not loaded" state.
+  if (!manualQaRagUrl) {
+    return Response.json({ ready: false, chunkCount: 0 });
+  }
   try {
     const res = await fetch(`${manualQaRagUrl}/api/status`, {
       cache: "no-store",
@@ -216,6 +224,14 @@ export async function GET(): Promise<Response> {
 }
 
 export async function POST(req: Request): Promise<Response> {
+  // Every answer costs a retrieval and a generation against the team's own
+  // Cloudflare account, so this can't be an open endpoint — the deployment
+  // URL is public whether or not the source is. Any signed-in member may
+  // ask; the check is "is this one of us", not a role.
+  if (!(await uidFromIdToken(bearerToken(req)))) {
+    return Response.json({ error: "Sign in to ask a question." }, { status: 401 });
+  }
+
   let body: QaRequestBody;
   try {
     body = (await req.json()) as QaRequestBody;

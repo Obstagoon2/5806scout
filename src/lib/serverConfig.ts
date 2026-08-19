@@ -14,36 +14,36 @@ export interface ServerConfig {
   nexusApiKey: string | null;
   /**
    * Base URL of the Cloudflare AI Search worker that backs Manual Q&A
-   * (RAG over the official game manual PDF). Not a secret — the worker is
-   * public — but kept server-side so the client only talks to our own API.
-   * Used as the fallback when the in-app AI Search REST path isn't configured.
+   * (RAG over the official game manual PDF). Kept server-side so the client
+   * only ever talks to our own API. Used as the fallback when the in-app AI
+   * Search REST path isn't configured.
    */
-  manualQaRagUrl: string;
+  manualQaRagUrl: string | null;
   /**
    * Cloudflare AI Search (RAG) accessed directly from this app's API route —
    * retrieval + generation over the game manual, no intermediary worker. The
-   * account id and instance aren't secret; the token is and lives only in env.
-   * When the token is set, Manual Q&A runs in-app; otherwise it falls back to
-   * the worker above.
+   * token is the secret; the account id and instance merely identify whose
+   * account to bill, which is why none of the three is baked into the source.
+   * When all are set, Manual Q&A runs in-app; otherwise it falls back to the
+   * worker above, and without that the tab reports the manual isn't loaded.
    */
-  cfAccountId: string;
-  cfAiSearchInstance: string;
+  cfAccountId: string | null;
+  cfAiSearchInstance: string | null;
   cfAiSearchToken: string | null;
 }
 
-const DEFAULT_MANUAL_QA_RAG_URL =
-  "https://soft-hill-26e4.nakul-sethi-212.workers.dev";
-const DEFAULT_CF_ACCOUNT_ID = "77886244760af9d4f07c7394b8d4cd00";
-const DEFAULT_CF_AI_SEARCH_INSTANCE = "game-manual-2026";
-
+// Deliberately no defaults. These used to carry a working account id and
+// worker URL, which is fine in a private repo and not fine in a public one:
+// the URL named its owner, and anyone with the source could spend that
+// account's Manual Q&A quota. A fork now starts inert until its own values
+// are set, and every consumer already degrades to a setup message.
 export function getServerConfig(): ServerConfig {
   return {
     tbaApiKey: process.env.TBA_API_KEY || null,
     nexusApiKey: process.env.NEXUS_API_KEY || null,
-    manualQaRagUrl: process.env.MANUAL_QA_RAG_URL || DEFAULT_MANUAL_QA_RAG_URL,
-    cfAccountId: process.env.CF_ACCOUNT_ID || DEFAULT_CF_ACCOUNT_ID,
-    cfAiSearchInstance:
-      process.env.CF_AI_SEARCH_INSTANCE || DEFAULT_CF_AI_SEARCH_INSTANCE,
+    manualQaRagUrl: process.env.MANUAL_QA_RAG_URL || null,
+    cfAccountId: process.env.CF_ACCOUNT_ID || null,
+    cfAiSearchInstance: process.env.CF_AI_SEARCH_INSTANCE || null,
     cfAiSearchToken: process.env.CF_AI_SEARCH_TOKEN || null,
   };
 }
