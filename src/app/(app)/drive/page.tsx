@@ -236,7 +236,7 @@ export default function DrivePage() {
       {event && predictions.length === 0 && (
         <div className="rounded-lg border border-dashed border-graphite-300 bg-graphite-50 px-6 py-12 text-center text-sm text-graphite-500">
           No upcoming matches for Team {viewedTeamNumber} —{" "}
-          {isOwnTeam ? "you're" : "they're"} done for the day (or the schedule
+          {isOwnTeam ? "you're " : "they're "} done for the day (or the schedule
           hasn&apos;t been posted yet).
         </div>
       )}
