@@ -28,10 +28,10 @@ import {
   reconcileOrder,
   restoreFromDoNotPick,
   splitDoNotPick,
-  toggleStruck,
   type PicklistDoc,
 } from "@/lib/picklist";
 import { collection, doc, onSnapshot, setDoc } from "firebase/firestore";
+import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 
 function phaseAvg(agg: TeamAggregate | undefined, ids: string[]): number | null {
@@ -342,7 +342,6 @@ export default function PicklistPage() {
                     {order.map((teamNumber, index) => {
                       const info = teamsByNumber.get(teamNumber);
                       const agg = aggregates.get(String(teamNumber));
-                      const isStruck = struck.has(teamNumber);
                       const auto = phaseAvg(agg, autoIds);
                       const teleop = phaseAvg(agg, teleopIds);
                       return (
@@ -362,11 +361,11 @@ export default function PicklistPage() {
                             }
                             dragFrom.current = null;
                           }}
-                          className={`transition ${isStruck ? "bg-graphite-50 opacity-50" : "hover:bg-graphite-50"}`}
+                          className="transition hover:bg-graphite-50"
                         >
                           <td
                             className={`stat px-3 py-2 font-semibold ${
-                              index < 3 && !isStruck
+                              index < 3
                                 ? "text-maroon-600 dark:text-maroon-400"
                                 : "text-graphite-400"
                             }`}
@@ -375,50 +374,28 @@ export default function PicklistPage() {
                           </td>
                           <td className="px-3 py-2">
                             <span className="inline-flex items-center gap-1.5">
-                              <button
-                                type="button"
-                                disabled={!isAdmin}
-                                onClick={() =>
-                                  void save(
-                                    [...order],
-                                    toggleStruck([...struck], teamNumber),
-                                    [...doNotPick],
-                                  )
-                                }
-                                className={`stat font-semibold ${
-                                  isStruck ? "line-through" : ""
-                                } ${isAdmin ? "hover:text-maroon-600 dark:hover:text-maroon-400" : ""}`}
-                                title={
-                                  isAdmin ? "Toggle picked/unavailable" : undefined
-                                }
+                              <Link
+                                href={`/teams/${teamNumber}`}
+                                // Anchors drag themselves by default, which
+                                // would hijack the row's drag-to-reorder.
+                                draggable={false}
+                                className="stat font-semibold underline-offset-2 hover:text-maroon-600 hover:underline dark:hover:text-maroon-400"
+                                title={`Open ${teamNumber}'s summary`}
                               >
                                 {teamNumber}
-                              </button>
+                              </Link>
                               <ReliabilityWarning teamNumber={teamNumber} />
                             </span>
                           </td>
                           <td className="px-3 py-2">
-                            <button
-                              type="button"
-                              disabled={!isAdmin}
-                              onClick={() =>
-                                void save(
-                                  [...order],
-                                  toggleStruck([...struck], teamNumber),
-                                  [...doNotPick],
-                                )
-                              }
-                              className={`text-left ${isStruck ? "line-through" : ""} ${
-                                isAdmin
-                                  ? "hover:text-maroon-600 dark:hover:text-maroon-400"
-                                  : ""
-                              }`}
-                              title={
-                                isAdmin ? "Toggle picked/unavailable" : undefined
-                              }
+                            <Link
+                              href={`/teams/${teamNumber}`}
+                              draggable={false}
+                              className="text-left underline-offset-2 hover:text-maroon-600 hover:underline dark:hover:text-maroon-400"
+                              title={`Open ${teamNumber}'s summary`}
                             >
                               {info?.nickname ?? "—"}
-                            </button>
+                            </Link>
                           </td>
                           <td className="stat px-3 py-2">
                             {eventRanks.get(teamNumber) ?? "—"}

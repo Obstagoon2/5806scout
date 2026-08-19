@@ -11,6 +11,8 @@ import {
 } from "@/lib/formSchema";
 import { splitMediaValues } from "@/lib/formMedia";
 import { PIT_MEDIA_COLLECTION } from "@/lib/pitScoutSchema";
+import { submitLocally } from "@/lib/offlineSync";
+import { SyncStatus } from "@/components/SyncStatus";
 import { useScoutForms } from "@/lib/useScoutForms";
 import {
   arrayUnion,
@@ -79,7 +81,7 @@ export default function PitScoutPage() {
     });
   }
 
-  async function handleSave() {
+  function handleSave() {
     if (!profile || !user || !activeTeam || !dataTeamId) return;
 
     const missing = missingRequiredFields(pitSections, values);
@@ -91,43 +93,49 @@ export default function PitScoutPage() {
     setStatus({ state: "saving" });
     const { core, media } = splitMediaValues(pitSections, values);
     try {
+      // Handed to Firestore's queue rather than awaited: offline the write
+      // lands in the IndexedDB cache immediately but the promise only settles
+      // on the server's ack, which stranded this form on "Saving…" in a pit
+      // with no signal. See submitLocally() in src/lib/offlineSync.ts.
+      //
       // merge: two scouts editing the same robot offline both land their
       // fields on sync instead of the last save wiping the other's work.
-      await setDoc(
-        doc(db, "teams", dataTeamId, "pitScouting", activeTeam),
-        {
-          scoutedTeam: activeTeam,
-          values: core,
-          scoutName: profile.fullName,
-          scoutUid: user.uid,
-          updatedAt: serverTimestamp(),
-        },
-        { merge: true },
-      );
-      if (Object.keys(media).length > 0) {
-        await setDoc(
-          doc(db, "teams", dataTeamId, PIT_MEDIA_COLLECTION, activeTeam),
+      submitLocally(
+        setDoc(
+          doc(db, "teams", dataTeamId, "pitScouting", activeTeam),
           {
             scoutedTeam: activeTeam,
-            values: media,
+            values: core,
+            scoutName: profile.fullName,
+            scoutUid: user.uid,
             updatedAt: serverTimestamp(),
           },
           { merge: true },
+        ),
+      );
+      if (Object.keys(media).length > 0) {
+        submitLocally(
+          setDoc(
+            doc(db, "teams", dataTeamId, PIT_MEDIA_COLLECTION, activeTeam),
+            {
+              scoutedTeam: activeTeam,
+              values: media,
+              updatedAt: serverTimestamp(),
+            },
+            { merge: true },
+          ),
         );
       }
       // Saving a robot's form is what "done" means for a pit assignment, so
-      // cross it off here rather than making the scout tick it twice.
+      // cross it off here rather than making the scout tick it twice. Silent
+      // on failure, and not a sync failure: no assignment set may exist at
+      // all, and the form is saved either way.
       const teamNumber = Number(activeTeam);
       if (Number.isInteger(teamNumber)) {
-        try {
-          await updateDoc(
-            doc(db, "teams", dataTeamId, "config", "pitAssignments"),
-            { completedTeams: arrayUnion(teamNumber) },
-          );
-        } catch {
-          // No assignment set has been generated — the form is saved either
-          // way, which is what the scout cares about.
-        }
+        void updateDoc(
+          doc(db, "teams", dataTeamId, "config", "pitAssignments"),
+          { completedTeams: arrayUnion(teamNumber) },
+        ).catch(() => undefined);
       }
       setStatus({ state: "saved" });
     } catch (err) {
@@ -211,6 +219,8 @@ export default function PitScoutPage() {
               if (status.state !== "idle") setStatus({ state: "idle" });
             }}
           />
+
+          <SyncStatus />
 
           {status.state === "error" && (
             <p className="badge-error rounded-md px-3 py-2 text-sm normal-case tracking-normal">

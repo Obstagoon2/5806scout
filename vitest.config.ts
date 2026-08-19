@@ -14,7 +14,7 @@ export default defineConfig({
     // Cloudflare Worker, which has its own vitest.config.mts and needs the
     // Workers pool to resolve `cloudflare:test`.
     exclude: [
-      "**/node_modules/**",
+      "**/node_modules*/**",
       "**/dist/**",
       "**/.claude/worktrees/**",
       "soft-hill-26e4/**",

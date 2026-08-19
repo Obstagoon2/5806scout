@@ -48,3 +48,6 @@ next-env.d.ts
 
 # claude-flow local daemon state/logs
 /.claude-flow/
+
+# claude-flow state under the plugin dir (local daemon scratch, not project source)
+.claude/.claude-flow/

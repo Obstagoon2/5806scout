@@ -28,6 +28,8 @@ import {
   type MatchClock,
 } from "@/lib/matchTimer";
 import { RELIABILITY_FLAGS_DOC_ID } from "@/lib/reliability";
+import { submitLocally } from "@/lib/offlineSync";
+import { SyncStatus } from "@/components/SyncStatus";
 import { useScoutForms } from "@/lib/useScoutForms";
 import {
   addDoc,
@@ -575,7 +577,7 @@ export default function MatchScoutPage() {
 
   const noShow = values.noShow === "Yes";
 
-  async function handleSubmit() {
+  function handleSubmit() {
     if (!profile || !user || !dataTeamId) return;
 
     const match = Number(matchNumber.trim());
@@ -607,16 +609,23 @@ export default function MatchScoutPage() {
 
     setStatus({ state: "saving" });
     try {
-      await addDoc(collection(db, "teams", dataTeamId, "matchScouting"), {
-        matchNumber: match,
-        scoutedTeam: team,
-        alliance,
-        values: submittedValues,
-        reliabilityIssue,
-        scoutName: profile.fullName,
-        scoutUid: user.uid,
-        createdAt: serverTimestamp(),
-      });
+      // Not awaited, deliberately: Firestore applies this to its IndexedDB
+      // cache at once but only settles the promise when the SERVER acks it,
+      // which never happens in an arena with no signal. Awaiting stranded the
+      // form on "Submitting…" and stopped the scout recording the next match.
+      // See submitLocally() in src/lib/offlineSync.ts.
+      submitLocally(
+        addDoc(collection(db, "teams", dataTeamId, "matchScouting"), {
+          matchNumber: match,
+          scoutedTeam: team,
+          alliance,
+          values: submittedValues,
+          reliabilityIssue,
+          scoutName: profile.fullName,
+          scoutUid: user.uid,
+          createdAt: serverTimestamp(),
+        }),
+      );
 
       // Every submission bumps the team's scouted-match counter — that's the
       // denominator that decides whether a flag stays scoped to this match or
@@ -624,23 +633,25 @@ export default function MatchScoutPage() {
       // it came from. arrayUnion keeps concurrent scouts from clobbering each
       // other and collapses duplicate submissions for the same match; merge
       // keeps other teams' counters intact.
-      await setDoc(
-        doc(db, "teams", dataTeamId, "config", RELIABILITY_FLAGS_DOC_ID),
-        {
-          teams: {
-            [team]: {
-              scoutedMatches: arrayUnion(match),
-              ...(reliabilityIssue
-                ? {
-                    flaggedMatches: arrayUnion(match),
-                    flaggedByName: profile.fullName,
-                    updatedAtMs: Date.now(),
-                  }
-                : {}),
+      submitLocally(
+        setDoc(
+          doc(db, "teams", dataTeamId, "config", RELIABILITY_FLAGS_DOC_ID),
+          {
+            teams: {
+              [team]: {
+                scoutedMatches: arrayUnion(match),
+                ...(reliabilityIssue
+                  ? {
+                      flaggedMatches: arrayUnion(match),
+                      flaggedByName: profile.fullName,
+                      updatedAtMs: Date.now(),
+                    }
+                  : {}),
+              },
             },
           },
-        },
-        { merge: true },
+          { merge: true },
+        ),
       );
 
       // Submitting is what "done" means for the assignment row this form was
@@ -650,14 +661,13 @@ export default function MatchScoutPage() {
         pickedSlot.matchNumber === match &&
         String(pickedSlot.teamNumber) === team
       ) {
-        try {
-          await updateDoc(
-            doc(db, "teams", dataTeamId, "config", "matchAssignments"),
-            { completedSlots: arrayUnion(slotKey(pickedSlot)) },
-          );
-        } catch {
-          // The submission landed regardless; the scout can tick the row.
-        }
+        // Silent on failure, and not counted as a sync failure: no
+        // assignment set may have been generated at all. The submission
+        // landed regardless; the scout can tick the row.
+        void updateDoc(
+          doc(db, "teams", dataTeamId, "config", "matchAssignments"),
+          { completedSlots: arrayUnion(slotKey(pickedSlot)) },
+        ).catch(() => undefined);
       }
       setPickedSlot(null);
 
@@ -1103,6 +1113,8 @@ export default function MatchScoutPage() {
           </span>
         </label>
 
+        <SyncStatus />
+
         {status.state === "error" && (
           <p className="badge-error rounded-md px-3 py-2 text-sm normal-case tracking-normal">
             {status.message}
@@ -1110,7 +1122,7 @@ export default function MatchScoutPage() {
         )}
         {status.state === "saved" && (
           <p className="badge-success rounded-md px-3 py-2 text-sm normal-case tracking-normal">
-            Submitted — form reset for the next match.
+            Saved — form reset for the next match.
           </p>
         )}
 

@@ -31,5 +31,5 @@
     ".next/dev/types/**/*.ts",
     "**/*.mts"
   ],
-  "exclude": ["node_modules", "soft-hill-26e4"]
+  "exclude": ["node_modules", ".claude", "soft-hill-26e4"]
 }

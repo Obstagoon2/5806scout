@@ -8,6 +8,7 @@ import {
   interquartileRange,
   median,
   type MatchSubmission,
+  type TeamAggregate,
 } from "@/lib/aggregate";
 import { useStoredPreference } from "@/lib/storedPreference";
 import { ReliabilityWarning } from "@/components/ReliabilityFlags";
@@ -53,6 +54,15 @@ const STAT_MODE_BLURBS: Record<StatMode, string> = {
   iqr: "Median, then the interquartile range (Q3 − Q1) after it: the width of the middle half of their matches. Small spread means you can count on them.",
 };
 
+type SortDir = "asc" | "desc";
+
+/** Which column a table is ordered by; null means the table's natural order
+ *  (Raw: match number as queried; By Team: whatever aggregateByTeam returns). */
+interface Sort {
+  key: string;
+  dir: SortDir;
+}
+
 /** One counter's value from every listed submission; a blank reads as 0,
  *  matching how aggregateByTeam counts an unanswered field. */
 function columnValues(
@@ -60,6 +70,10 @@ function columnValues(
   id: string,
 ): number[] {
   return rows.map((s) => (typeof s.values[id] === "number" ? (s.values[id] as number) : 0));
+}
+
+function counterValue(row: MatchSubmission, id: string): number {
+  return typeof row.values[id] === "number" ? (row.values[id] as number) : 0;
 }
 
 function mean(values: readonly number[]): number {
@@ -71,6 +85,101 @@ function statHeader(mode: StatMode, label: string): string {
   if (mode === "mean") return `Avg ${label}`;
   if (mode === "median") return `Median ${label}`;
   return `Median ±IQR ${label}`;
+}
+
+/** Team numbers sort numerically ("9" before "10"), falling back to text for
+ *  the odd entry that isn't a plain number. */
+function compareTeam(a: string, b: string): number {
+  const na = Number.parseInt(a, 10);
+  const nb = Number.parseInt(b, 10);
+  if (Number.isNaN(na) || Number.isNaN(nb)) return a.localeCompare(b);
+  return na - nb;
+}
+
+/** The figure a counter column actually shows, so sorting matches the eye:
+ *  IQR mode displays the median, so it sorts by the median too. */
+function statValue(agg: TeamAggregate, id: string, mode: StatMode): number {
+  if (mode === "mean") return agg.averages[id] ?? 0;
+  return median(agg.samples[id] ?? []) ?? 0;
+}
+
+/**
+ * Up/down arrows that set the sort direction for one column. Pressing the
+ * arrow that's already active clears the sort — it's the only way back to the
+ * table's natural order.
+ */
+function SortArrows({
+  label,
+  sortKey,
+  sort,
+  onSort,
+}: {
+  label: string;
+  sortKey: string;
+  sort: Sort | null;
+  onSort: (next: Sort | null) => void;
+}) {
+  const active = sort?.key === sortKey ? sort.dir : null;
+  return (
+    <span className="ml-1 inline-flex flex-col leading-[0.6]">
+      {(["asc", "desc"] as const).map((dir) => (
+        <button
+          key={dir}
+          type="button"
+          aria-pressed={active === dir}
+          aria-label={`Sort by ${label} ${
+            dir === "asc" ? "ascending" : "descending"
+          }`}
+          onClick={() => onSort(active === dir ? null : { key: sortKey, dir })}
+          title={`Sort ${label} ${dir === "asc" ? "ascending" : "descending"}`}
+          className={`px-0.5 text-[9px] transition ${
+            active === dir
+              ? "text-maroon-600 dark:text-maroon-400"
+              : "text-graphite-300 hover:text-graphite-600"
+          }`}
+        >
+          <span aria-hidden>{dir === "asc" ? "▲" : "▼"}</span>
+        </button>
+      ))}
+    </span>
+  );
+}
+
+/** A column header with its sort controls. */
+function SortableTh({
+  label,
+  sortKey,
+  sort,
+  onSort,
+}: {
+  label: string;
+  sortKey: string;
+  sort: Sort | null;
+  onSort: (next: Sort | null) => void;
+}) {
+  const active = sort?.key === sortKey ? sort.dir : null;
+  return (
+    <th
+      className="px-3 py-2.5"
+      aria-sort={
+        active === "asc"
+          ? "ascending"
+          : active === "desc"
+            ? "descending"
+            : "none"
+      }
+    >
+      <span className="inline-flex items-center whitespace-nowrap">
+        {label}
+        <SortArrows
+          label={label}
+          sortKey={sortKey}
+          sort={sort}
+          onSort={onSort}
+        />
+      </span>
+    </th>
+  );
 }
 
 export default function DataPage() {
@@ -86,6 +195,8 @@ export default function DataPage() {
   const [submissions, setSubmissions] = useState<MatchSubmission[]>([]);
   const [teamFilter, setTeamFilter] = useState("");
   const [scoutFilter, setScoutFilter] = useState("");
+  const [rawSort, setRawSort] = useState<Sort | null>(null);
+  const [teamSort, setTeamSort] = useState<Sort | null>(null);
 
   useEffect(() => {
     // Reads the shared store so a sister pair analyzes pooled data.
@@ -142,6 +253,40 @@ export default function DataPage() {
     () => aggregateByTeam(matchSections, submissions),
     [matchSections, submissions],
   );
+
+  // Sorting is applied after filtering so the summary row keeps describing
+  // exactly the rows on screen, whatever order they're in.
+  const sortedRows = useMemo(() => {
+    if (!rawSort) return filtered;
+    const factor = rawSort.dir === "asc" ? 1 : -1;
+    return [...filtered].sort((a, b) => {
+      if (rawSort.key === "match") return factor * (a.matchNumber - b.matchNumber);
+      if (rawSort.key === "team")
+        return factor * compareTeam(a.scoutedTeam, b.scoutedTeam);
+      return (
+        factor * (counterValue(a, rawSort.key) - counterValue(b, rawSort.key))
+      );
+    });
+  }, [filtered, rawSort]);
+
+  const sortedAggregates = useMemo(() => {
+    if (!teamSort) return aggregates;
+    const factor = teamSort.dir === "asc" ? 1 : -1;
+    return [...aggregates].sort((a, b) => {
+      if (teamSort.key === "team") return factor * compareTeam(a.team, b.team);
+      if (teamSort.key === "matches") return factor * (a.matches - b.matches);
+      if (teamSort.key === "endgame")
+        return (
+          factor *
+          (a.modes.endgame ?? "").localeCompare(b.modes.endgame ?? "")
+        );
+      return (
+        factor *
+        (statValue(a, teamSort.key, statMode) -
+          statValue(b, teamSort.key, statMode))
+      );
+    });
+  }, [aggregates, teamSort, statMode]);
 
   // One pass over the filtered rows per counter, reused by the summary row's
   // mean and its median/IQR rather than recomputed per cell.
@@ -230,19 +375,31 @@ export default function DataPage() {
             <table className="w-full min-w-max text-left text-sm">
               <thead>
                 <tr className="border-b border-graphite-200 text-xs uppercase tracking-wider text-graphite-500">
-                  <th className="px-3 py-2.5">Match</th>
-                  <th className="px-3 py-2.5">Team</th>
-                  <th className="px-3 py-2.5">Alliance</th>
+                  <SortableTh
+                    label="Match"
+                    sortKey="match"
+                    sort={rawSort}
+                    onSort={setRawSort}
+                  />
+                  <SortableTh
+                    label="Team"
+                    sortKey="team"
+                    sort={rawSort}
+                    onSort={setRawSort}
+                  />
                   {counterIds.map((id) => (
-                    <th key={id} className="px-3 py-2.5">
-                      {fieldLabels[id]}
-                    </th>
+                    <SortableTh
+                      key={id}
+                      label={fieldLabels[id]}
+                      sortKey={id}
+                      sort={rawSort}
+                      onSort={setRawSort}
+                    />
                   ))}
-                  <th className="px-3 py-2.5">Scout</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-graphite-100">
-                {filtered.map((s) => (
+                {sortedRows.map((s) => (
                   <tr key={s.id} className="transition hover:bg-graphite-50">
                     <td className="stat px-3 py-2">Q{s.matchNumber}</td>
                     <td className="stat px-3 py-2">
@@ -254,29 +411,17 @@ export default function DataPage() {
                         />
                       </span>
                     </td>
-                    <td className="px-3 py-2">
-                      <span
-                        className={`inline-block rounded px-1.5 py-0.5 text-xs font-semibold ${
-                          s.alliance === "red"
-                            ? "bg-maroon-50 text-maroon-700 dark:text-maroon-300"
-                            : "bg-sky-50 text-sky-700 dark:text-sky-300"
-                        }`}
-                      >
-                        {s.alliance}
-                      </span>
-                    </td>
                     {counterIds.map((id) => (
                       <td key={id} className="stat px-3 py-2">
                         {typeof s.values[id] === "number" ? (s.values[id] as number) : 0}
                       </td>
                     ))}
-                    <td className="px-3 py-2 text-graphite-500">{s.scoutName}</td>
                   </tr>
                 ))}
-                {filtered.length === 0 && (
+                {sortedRows.length === 0 && (
                   <tr>
                     <td
-                      colSpan={4 + counterIds.length}
+                      colSpan={2 + counterIds.length}
                       className="px-3 py-8 text-center text-graphite-400"
                     >
                       No submissions{submissions.length > 0 ? " match the filters" : " yet"}.
@@ -295,7 +440,6 @@ export default function DataPage() {
                     <td className="stat px-3 py-2.5 text-graphite-500">
                       {filtered.length} match{filtered.length === 1 ? "" : "es"}
                     </td>
-                    <td className="px-3 py-2.5" />
                     {counterIds.map((id) => (
                       <td key={id} className="stat px-3 py-2.5">
                         <CounterStat
@@ -305,7 +449,6 @@ export default function DataPage() {
                         />
                       </td>
                     ))}
-                    <td className="px-3 py-2.5" />
                   </tr>
                 </tfoot>
               )}
@@ -323,18 +466,37 @@ export default function DataPage() {
           <table className="w-full min-w-max text-left text-sm">
             <thead>
               <tr className="border-b border-graphite-200 text-xs uppercase tracking-wider text-graphite-500">
-                <th className="px-3 py-2.5">Team</th>
-                <th className="px-3 py-2.5">Matches</th>
+                <SortableTh
+                  label="Team"
+                  sortKey="team"
+                  sort={teamSort}
+                  onSort={setTeamSort}
+                />
+                <SortableTh
+                  label="Matches"
+                  sortKey="matches"
+                  sort={teamSort}
+                  onSort={setTeamSort}
+                />
                 {counterIds.map((id) => (
-                  <th key={id} className="px-3 py-2.5">
-                    {statHeader(statMode, fieldLabels[id])}
-                  </th>
+                  <SortableTh
+                    key={id}
+                    label={statHeader(statMode, fieldLabels[id])}
+                    sortKey={id}
+                    sort={teamSort}
+                    onSort={setTeamSort}
+                  />
                 ))}
-                <th className="px-3 py-2.5">Typical endgame</th>
+                <SortableTh
+                  label="Typical endgame"
+                  sortKey="endgame"
+                  sort={teamSort}
+                  onSort={setTeamSort}
+                />
               </tr>
             </thead>
             <tbody className="divide-y divide-graphite-100">
-              {aggregates.map((agg) => (
+              {sortedAggregates.map((agg) => (
                 <tr key={agg.team} className="transition hover:bg-graphite-50">
                   <td className="stat px-3 py-2 font-semibold">
                     <span className="inline-flex items-center gap-1.5">
@@ -357,7 +519,7 @@ export default function DataPage() {
                   </td>
                 </tr>
               ))}
-              {aggregates.length === 0 && (
+              {sortedAggregates.length === 0 && (
                 <tr>
                   <td
                     colSpan={3 + counterIds.length}

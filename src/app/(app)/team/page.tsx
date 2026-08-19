@@ -97,6 +97,7 @@ export default function TeamPage() {
   const [linkMessage, setLinkMessage] = useState<string | null>(null);
   const [dutiesDoc, setDutiesDoc] =
     useState<ScoutDutiesDoc>(emptyScoutDutiesDoc);
+  const [deletingUid, setDeletingUid] = useState<string | null>(null);
 
   // Roster pools both teams when a sister team is linked, so assignments
   // split the work across every active scout in the pair.
@@ -389,6 +390,50 @@ export default function TeamPage() {
       });
     } catch {
       setError("Could not change that member's role — check your connection.");
+    }
+  }
+
+  /**
+   * Permanently delete a teammate: both their login and their roster entry,
+   * which frees their email so they can sign up again or be invited back.
+   * Unlike Deactivate this cannot be undone, hence the confirm.
+   *
+   * Runs through /api/delete-member because deleting someone else's auth
+   * account needs the service account — firestore.rules still forbids every
+   * client from deleting a users/{uid} doc.
+   */
+  async function deleteMember(member: UserProfile) {
+    if (!profile || member.uid === user?.uid) return;
+    if (
+      !window.confirm(
+        `Permanently delete ${member.fullName}? This deletes their account and removes them from the roster. It cannot be undone — they would have to sign up again or be invited back.`,
+      )
+    ) {
+      return;
+    }
+    setError(null);
+    setDeletingUid(member.uid);
+    try {
+      const idToken = await user?.getIdToken();
+      const res = await fetch("/api/delete-member", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${idToken ?? ""}`,
+        },
+        body: JSON.stringify({ uid: member.uid }),
+      });
+      const body = (await res.json().catch(() => null)) as {
+        error?: string;
+      } | null;
+      if (!res.ok) {
+        setError(body?.error ?? "Could not delete that member — try again.");
+      }
+      // On success the roster listener drops the row on its own.
+    } catch {
+      setError("Could not delete that member — check your connection.");
+    } finally {
+      setDeletingUid(null);
     }
   }
 
@@ -749,6 +794,15 @@ export default function TeamPage() {
                     className="btn-ghost border border-graphite-200 px-2.5 py-1"
                   >
                     {member.active ? "Deactivate" : "Reactivate"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void deleteMember(member)}
+                    disabled={deletingUid === member.uid}
+                    title={`Permanently delete ${member.fullName}`}
+                    className="btn-ghost border border-maroon-200 px-2.5 py-1 text-maroon-700 dark:border-maroon-700 dark:text-maroon-300 disabled:opacity-40"
+                  >
+                    {deletingUid === member.uid ? "Deleting…" : "Delete"}
                   </button>
                 </>
               )}
