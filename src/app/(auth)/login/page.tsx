@@ -1,6 +1,7 @@
 "use client";
 
 import { GoogleSignInButton } from "@/components/GoogleSignInButton";
+import { PasswordField } from "@/components/PasswordField";
 import { auth, db } from "@/lib/firebase/client";
 import { FirebaseError } from "firebase/app";
 import {
@@ -103,16 +104,12 @@ export default function LoginPage() {
                   className={inputClass}
                 />
               </label>
-              <label className="flex flex-col gap-1.5">
-                <span className="text-sm font-medium text-graphite-700">Password</span>
-                <input
-                  required
-                  type="password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  className={inputClass}
-                />
-              </label>
+              <PasswordField
+                label="Password"
+                value={password}
+                onChange={setPassword}
+                autoComplete="current-password"
+              />
 
               {error && (
                 <p className="badge-error rounded-md px-3 py-2 text-sm normal-case tracking-normal">

@@ -1,6 +1,7 @@
 "use client";
 
 import { GoogleSignInButton } from "@/components/GoogleSignInButton";
+import { PasswordField } from "@/components/PasswordField";
 import { auth, db } from "@/lib/firebase/client";
 import {
   createUserWithEmailAndPassword,
@@ -186,16 +187,13 @@ export default function SignupPage() {
               className={inputClass}
             />
           </Field>
-          <Field label="Password">
-            <input
-              required
-              type="password"
-              minLength={6}
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              className={inputClass}
-            />
-          </Field>
+          <PasswordField
+            label="Password"
+            value={password}
+            onChange={setPassword}
+            autoComplete="new-password"
+            minLength={6}
+          />
 
           <label className="flex items-center gap-2 text-sm text-graphite-700">
             <input
