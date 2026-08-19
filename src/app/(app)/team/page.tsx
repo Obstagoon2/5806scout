@@ -1,6 +1,7 @@
 "use client";
 
 import { DataExport } from "@/components/DataExport";
+import { DataReset } from "@/components/DataReset";
 import { useAuth } from "@/lib/auth/AuthProvider";
 import {
   assignMatchScouts,
@@ -638,8 +639,6 @@ export default function TeamPage() {
         </div>
       )}
 
-      {isAdmin && <DataExport />}
-
       {isAdmin && (
         <div className="flex flex-col gap-3">
           {!showInvite && (
@@ -813,6 +812,12 @@ export default function TeamPage() {
           </li>
         ))}
       </ul>
+
+      {/* Last on the page, in workflow order: download the season, then wipe
+          it. The reset is destructive and deliberately sits below everything
+          an admin uses day to day. */}
+      {isAdmin && <DataExport />}
+      {isAdmin && <DataReset />}
     </main>
   );
 }

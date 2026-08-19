@@ -4,7 +4,7 @@ import {
   initializeTestEnvironment,
   type RulesTestEnvironment,
 } from "@firebase/rules-unit-testing";
-import { doc, getDoc, setDoc } from "firebase/firestore";
+import { deleteDoc, doc, getDoc, setDoc } from "firebase/firestore";
 import { readFileSync } from "node:fs";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
@@ -72,6 +72,8 @@ beforeEach(async () => {
 
     await setDoc(doc(db, "users/alice"), { teamId: "teamA", role: "admin" });
     await setDoc(doc(db, "users/bob"), { teamId: "teamB", role: "scout" });
+    await setDoc(doc(db, "users/bea"), { teamId: "teamB", role: "admin" });
+    await setDoc(doc(db, "users/erin"), { teamId: "teamA", role: "scout" });
     await setDoc(doc(db, "users/carol"), { teamId: "teamC", role: "admin" });
     await setDoc(doc(db, "users/dave"), { teamId: "teamD", role: "admin" });
 
@@ -81,6 +83,9 @@ beforeEach(async () => {
     }
     await setDoc(doc(db, "teams/teamA/config/scoutDuties"), { seeded: true });
     await setDoc(doc(db, "teams/teamA/config/picklist"), { seeded: true });
+    // Talkie requests carry a poster, who may withdraw their own.
+    await setDoc(doc(db, "teams/teamA/talkie/byErin"), { createdByUid: "erin" });
+    await setDoc(doc(db, "teams/teamA/talkie/byBob"), { createdByUid: "bob" });
   });
 });
 
@@ -126,6 +131,62 @@ describe("a one-sided link", () => {
   // data by writing one field on its own doc.
   it.each(POOLED)("grants nothing on teamA's %s", async (collection) => {
     await assertFails(getDoc(doc(as("dave"), `teams/teamA/${collection}/doc1`)));
+  });
+});
+
+// The Team tab's reset wipes an event in one action, so the rules — not just
+// the UI — decide who may delete. Everything a team collects is admin-only,
+// with one carve-out for withdrawing a talkie request you posted yourself.
+describe("deleting collected data", () => {
+  it.each(POOLED)("a teammate scout cannot delete teamA's %s", async (collection) => {
+    await assertFails(deleteDoc(doc(as("erin"), `teams/teamA/${collection}/doc1`)));
+  });
+
+  it.each(POOLED)("teamA's own admin deletes its %s", async (collection) => {
+    await assertSucceeds(
+      deleteDoc(doc(as("alice"), `teams/teamA/${collection}/doc1`)),
+    );
+  });
+
+  it("a teammate scout cannot delete teamA's assignments", async () => {
+    await assertFails(deleteDoc(doc(as("erin"), "teams/teamA/config/scoutDuties")));
+  });
+
+  it("teamA's own admin deletes its assignments", async () => {
+    await assertSucceeds(
+      deleteDoc(doc(as("alice"), "teams/teamA/config/scoutDuties")),
+    );
+  });
+
+  it.each(POOLED)("a sister scout cannot delete teamA's %s", async (collection) => {
+    await assertFails(deleteDoc(doc(as("bob"), `teams/teamA/${collection}/doc1`)));
+  });
+
+  // A pair shares one store, so resetting from either side has to reach it.
+  it.each(POOLED)("a sister admin deletes teamA's %s", async (collection) => {
+    await assertSucceeds(
+      deleteDoc(doc(as("bea"), `teams/teamA/${collection}/doc1`)),
+    );
+  });
+
+  it("a sister admin still cannot touch teamA's picklist", async () => {
+    await assertFails(deleteDoc(doc(as("bea"), "teams/teamA/config/picklist")));
+  });
+
+  it("lets a scout withdraw the talkie request they posted", async () => {
+    await assertSucceeds(deleteDoc(doc(as("erin"), "teams/teamA/talkie/byErin")));
+  });
+
+  it("never lets a scout delete someone else's talkie request", async () => {
+    await assertFails(deleteDoc(doc(as("erin"), "teams/teamA/talkie/byBob")));
+  });
+
+  it("lets a sister scout withdraw their own pooled talkie request", async () => {
+    await assertSucceeds(deleteDoc(doc(as("bob"), "teams/teamA/talkie/byBob")));
+  });
+
+  it.each(POOLED)("an unlinked admin cannot delete teamA's %s", async (collection) => {
+    await assertFails(deleteDoc(doc(as("carol"), `teams/teamA/${collection}/doc1`)));
   });
 });
 
