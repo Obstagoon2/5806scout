@@ -74,3 +74,8 @@ src/lib/            logic, kept pure and unit-tested where it matters
 Logic that decides something — scoring weights, assignment generation, sync
 messaging, aggregation — lives in `src/lib` with tests beside it, so it can be
 checked without standing up Firebase.
+
+## License
+
+[MIT](LICENSE) — do what you like with it. If it saves another team a
+weekend of spreadsheet wrangling, that's the point.
