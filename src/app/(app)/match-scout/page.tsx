@@ -23,11 +23,11 @@ import {
   isRunning,
   shiftAt,
   TELEOP_SECONDS,
-  toggleDefense,
   toggleMatch,
+  toggleTimer,
   watchSeconds,
-  type DefenseKind,
   type MatchClock,
+  type TimedKind,
 } from "@/lib/matchTimer";
 import { RELIABILITY_FLAGS_DOC_ID } from "@/lib/reliability";
 import { submitLocally } from "@/lib/offlineSync";
@@ -80,7 +80,6 @@ type Status =
 // call) starts unanswered instead so silence never fakes a data point.
 const PRESET_VALUES: FormValues = {
   noShow: "No",
-  died: "No",
   tipped: "No",
   card: "None",
 };
@@ -346,37 +345,46 @@ function RateSlider({
   );
 }
 
+/** The stopwatch buttons the clock drives, and the field each one fills. */
+const TIMED_BUTTONS: readonly {
+  kind: TimedKind;
+  fieldId: string;
+  label: string;
+}[] = [
+  { kind: "played", fieldId: "defenseSeconds", label: "Playing defense" },
+  { kind: "against", fieldId: "defendedSeconds", label: "Being defended" },
+  {
+    kind: "immobilized",
+    fieldId: "immobilizedSeconds",
+    label: "Immobilized / dead",
+  },
+];
+
 /**
- * The teleop clock and the two defense stopwatches it drives. The clock
- * counts down like the arena's, and each defense button is a hold — armed
- * while defense is happening, disarmed when it stops. Seconds accumulate only
- * while the match is running, so pausing for a field fault costs nothing.
+ * The teleop clock and the stopwatches it drives. The clock counts down like
+ * the arena's, and each button below is a hold — armed while the thing is
+ * happening, disarmed when it stops. Seconds accumulate only while the match
+ * is running, so pausing for a field fault costs nothing.
  */
 function MatchClockPanel({
   clock,
   now,
-  showPlayed,
-  showDefended,
+  buttons,
   onToggleMatch,
-  onToggleDefense,
+  onToggleTimer,
   onReset,
 }: {
   clock: MatchClock;
   now: number;
-  showPlayed: boolean;
-  showDefended: boolean;
+  buttons: readonly { kind: TimedKind; label: string }[];
   onToggleMatch: () => void;
-  onToggleDefense: (kind: DefenseKind) => void;
+  onToggleTimer: (kind: TimedKind) => void;
   onReset: () => void;
 }) {
   const elapsed = watchSeconds(clock.match, now);
   const remaining = Math.max(0, TELEOP_SECONDS - elapsed);
   const running = isRunning(clock.match);
-
-  const buttons: { kind: DefenseKind; label: string; show: boolean }[] = [
-    { kind: "played", label: "Playing defense", show: showPlayed },
-    { kind: "against", label: "Being defended", show: showDefended },
-  ];
+  const anyArmed = buttons.some((button) => clock.armed[button.kind]);
 
   return (
     <div className="flex flex-col gap-3 rounded-lg border border-graphite-200 bg-graphite-50 p-3">
@@ -410,36 +418,34 @@ function MatchClockPanel({
       </div>
 
       <div className="grid gap-2 sm:grid-cols-2">
-        {buttons
-          .filter((button) => button.show)
-          .map((button) => {
-            const armed = clock.armed[button.kind];
-            const seconds = watchSeconds(clock[button.kind], now);
-            return (
-              <button
-                key={button.kind}
-                type="button"
-                aria-pressed={armed}
-                onClick={() => onToggleDefense(button.kind)}
-                className={`flex min-h-14 items-center justify-between gap-2 rounded-md border px-3 text-sm font-semibold transition ${
-                  armed
-                    ? "border-maroon-600 bg-maroon-600 text-white"
-                    : "border-graphite-200 bg-surface text-graphite-700 hover:border-graphite-300"
-                }`}
-              >
-                <span>{button.label}</span>
-                <span className="stat text-lg">{formatClock(seconds)}</span>
-              </button>
-            );
-          })}
+        {buttons.map((button) => {
+          const armed = clock.armed[button.kind];
+          const seconds = watchSeconds(clock[button.kind], now);
+          return (
+            <button
+              key={button.kind}
+              type="button"
+              aria-pressed={armed}
+              onClick={() => onToggleTimer(button.kind)}
+              className={`flex min-h-14 items-center justify-between gap-2 rounded-md border px-3 text-sm font-semibold transition ${
+                armed
+                  ? "border-maroon-600 bg-maroon-600 text-white"
+                  : "border-graphite-200 bg-surface text-graphite-700 hover:border-graphite-300"
+              }`}
+            >
+              <span>{button.label}</span>
+              <span className="stat text-lg">{formatClock(seconds)}</span>
+            </button>
+          );
+        })}
       </div>
 
       {/* An armed button that isn't counting is the one way this can quietly
           lose data, so say so instead of looking like it's recording. */}
-      {!running && (clock.armed.played || clock.armed.against) && (
+      {!running && anyArmed && (
         <p className="text-xs text-amber-700 dark:text-amber-500">
-          Defense is held but the match clock is paused — press Start to keep
-          counting.
+          A stopwatch is held but the match clock is paused — press Start to
+          keep counting.
         </p>
       )}
     </div>
@@ -458,9 +464,9 @@ export default function MatchScoutPage() {
   const [entered, setEntered] = useState<FormValues>(() =>
     freshValues(MATCH_SCOUT_SECTIONS),
   );
-  // The teleop clock and the defense stopwatches it drives. Kept out of
-  // `entered` because it isn't something the scout typed — the seconds it
-  // produces are folded into `values` below.
+  // The teleop clock and the stopwatches it drives. Kept out of `entered`
+  // because it isn't something the scout typed — the seconds it produces are
+  // folded into `values` below.
   const [clock, setClock] = useState<MatchClock>(IDLE_CLOCK);
   const [now, setNow] = useState<number>(() => Date.now());
   const [status, setStatus] = useState<Status>({ state: "idle" });
@@ -509,10 +515,11 @@ export default function MatchScoutPage() {
     () => ({
       ...freshValues(matchSections),
       ...entered,
-      // The stopwatches are the source of truth for the two defense fields —
-      // they aren't tappable numbers, so nothing in `entered` can shadow them.
+      // The stopwatches are the source of truth for these three fields — they
+      // aren't tappable numbers, so nothing in `entered` can shadow them.
       defenseSeconds: watchSeconds(clock.played, now),
       defendedSeconds: watchSeconds(clock.against, now),
+      immobilizedSeconds: watchSeconds(clock.immobilized, now),
     }),
     [matchSections, entered, clock, now],
   );
@@ -566,10 +573,10 @@ export default function MatchScoutPage() {
     setClock((prev) => toggleMatch(prev, stamp));
   }
 
-  function handleToggleDefense(kind: DefenseKind) {
+  function handleToggleTimer(kind: TimedKind) {
     const stamp = Date.now();
     setNow(stamp);
-    setClock((prev) => toggleDefense(prev, kind, stamp));
+    setClock((prev) => toggleTimer(prev, kind, stamp));
   }
 
   function resetClock() {
@@ -692,6 +699,9 @@ export default function MatchScoutPage() {
   const inputClass = "field-input stat";
 
   const has = (fieldId: string) => shownFieldIds.has(fieldId);
+  // A team that dropped one of the timed questions from Form Setup loses that
+  // button, and dropping all three hides the clock panel entirely.
+  const timedButtons = TIMED_BUTTONS.filter((button) => has(button.fieldId));
   const hasSection = (title: string) =>
     matchSections.some((section) => section.title === title);
 
@@ -911,14 +921,13 @@ export default function MatchScoutPage() {
               <>
                 <SectionTitle>Teleop</SectionTitle>
 
-                {(has("defenseSeconds") || has("defendedSeconds")) && (
+                {timedButtons.length > 0 && (
                   <MatchClockPanel
                     clock={clock}
                     now={now}
-                    showPlayed={has("defenseSeconds")}
-                    showDefended={has("defendedSeconds")}
+                    buttons={timedButtons}
                     onToggleMatch={handleToggleMatch}
-                    onToggleDefense={handleToggleDefense}
+                    onToggleTimer={handleToggleTimer}
                     onReset={resetClock}
                   />
                 )}
@@ -957,8 +966,9 @@ export default function MatchScoutPage() {
                   />
                 )}
 
-                {/* Both defense fields are timed by the clock at the top of
-                    this section, so there's nothing to tap for them here. */}
+                {/* The defense and immobilized fields are timed by the clock
+                    at the top of this section, so there's nothing to tap for
+                    them here. */}
 
                 {renderExtras("Teleop")}
               </>
@@ -1018,15 +1028,6 @@ export default function MatchScoutPage() {
                     label="Defense skill (0–5)"
                     value={(values.defenseSkill as number) ?? 0}
                     onChange={(v) => setValue("defenseSkill", v)}
-                  />
-                )}
-
-                {has("died") && (
-                  <Segmented
-                    label="Died / immobilized"
-                    options={["No", "Briefly", "Most of match"]}
-                    value={values.died as string | null}
-                    onChange={(v) => setValue("died", v)}
                   />
                 )}
 

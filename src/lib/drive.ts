@@ -39,6 +39,7 @@ export const SCORING_WEIGHTS: ScoringWeights = {
   // score a minute of defense as a minute's worth of fuel.
   defenseSeconds: 0,
   defendedSeconds: 0,
+  immobilizedSeconds: 0,
 };
 
 /**

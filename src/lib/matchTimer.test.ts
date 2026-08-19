@@ -7,8 +7,8 @@ import {
   shiftAt,
   startMatch,
   TELEOP_SECONDS,
-  toggleDefense,
   toggleMatch,
+  toggleTimer,
   watchSeconds,
 } from "./matchTimer";
 
@@ -73,26 +73,26 @@ describe("match clock", () => {
   });
 });
 
-describe("defense stopwatches", () => {
+describe("timed-observation stopwatches", () => {
   it("times a stretch of defense within a running match", () => {
     let clock = startMatch(IDLE_CLOCK, at(0));
-    clock = toggleDefense(clock, "played", at(10));
-    clock = toggleDefense(clock, "played", at(40));
+    clock = toggleTimer(clock, "played", at(10));
+    clock = toggleTimer(clock, "played", at(40));
     expect(watchSeconds(clock.played, at(90))).toBe(30);
     expect(clock.armed.played).toBe(false);
   });
 
   it("keeps the two stopwatches independent", () => {
     let clock = startMatch(IDLE_CLOCK, at(0));
-    clock = toggleDefense(clock, "played", at(0));
-    clock = toggleDefense(clock, "against", at(20));
+    clock = toggleTimer(clock, "played", at(0));
+    clock = toggleTimer(clock, "against", at(20));
     expect(watchSeconds(clock.played, at(50))).toBe(50);
     expect(watchSeconds(clock.against, at(50))).toBe(30);
   });
 
   it("does not run before the match is started", () => {
     // A scout who arms defense early shouldn't bank pre-match seconds.
-    let clock = toggleDefense(IDLE_CLOCK, "played", at(0));
+    let clock = toggleTimer(IDLE_CLOCK, "played", at(0));
     expect(clock.armed.played).toBe(true);
     expect(watchSeconds(clock.played, at(30))).toBe(0);
 
@@ -102,7 +102,7 @@ describe("defense stopwatches", () => {
 
   it("parks an armed stopwatch while the match is paused, then resumes it", () => {
     let clock = startMatch(IDLE_CLOCK, at(0));
-    clock = toggleDefense(clock, "played", at(0));
+    clock = toggleTimer(clock, "played", at(0));
     clock = pauseMatch(clock, at(10));
     // Still held down — the pause must not disarm it.
     expect(clock.armed.played).toBe(true);
@@ -114,17 +114,44 @@ describe("defense stopwatches", () => {
 
   it("stops an armed stopwatch when defense is disarmed mid-pause", () => {
     let clock = startMatch(IDLE_CLOCK, at(0));
-    clock = toggleDefense(clock, "played", at(0));
+    clock = toggleTimer(clock, "played", at(0));
     clock = pauseMatch(clock, at(10));
-    clock = toggleDefense(clock, "played", at(30));
+    clock = toggleTimer(clock, "played", at(30));
     expect(clock.armed.played).toBe(false);
 
     clock = startMatch(clock, at(40));
     expect(watchSeconds(clock.played, at(90))).toBe(10);
   });
 
+  it("times a robot sitting dead the same way it times defense", () => {
+    let clock = startMatch(IDLE_CLOCK, at(0));
+    clock = toggleTimer(clock, "immobilized", at(20));
+    expect(clock.armed.immobilized).toBe(true);
+    // A field fault stops the world; a dead robot doesn't accrue seconds
+    // while the match clock isn't running either.
+    clock = pauseMatch(clock, at(50));
+    clock = startMatch(clock, at(80));
+    clock = toggleTimer(clock, "immobilized", at(90));
+    expect(watchSeconds(clock.immobilized, at(140))).toBe(40);
+    expect(clock.armed.immobilized).toBe(false);
+    // Nothing bled into the defense totals.
+    expect(watchSeconds(clock.played, at(140))).toBe(0);
+    expect(watchSeconds(clock.against, at(140))).toBe(0);
+  });
+
+  it("runs all three stopwatches at once", () => {
+    let clock = startMatch(IDLE_CLOCK, at(0));
+    clock = toggleTimer(clock, "played", at(0));
+    clock = toggleTimer(clock, "against", at(10));
+    clock = toggleTimer(clock, "immobilized", at(20));
+    expect(watchSeconds(clock.played, at(40))).toBe(40);
+    expect(watchSeconds(clock.against, at(40))).toBe(30);
+    expect(watchSeconds(clock.immobilized, at(40))).toBe(20);
+  });
+
   it("reads zero on an untouched clock", () => {
     expect(watchSeconds(IDLE_CLOCK.played, at(120))).toBe(0);
     expect(watchSeconds(IDLE_CLOCK.against, at(120))).toBe(0);
+    expect(watchSeconds(IDLE_CLOCK.immobilized, at(120))).toBe(0);
   });
 });

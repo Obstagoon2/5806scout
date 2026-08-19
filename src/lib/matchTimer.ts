@@ -1,15 +1,15 @@
-// Match clock + defense stopwatches for the Match Scout screen.
+// Match clock + timed-observation stopwatches for the Match Scout screen.
 //
 // REBUILT (2026) teleop runs 2:20 down to 0:00, split into a 10-second
 // transition, four 25-second alliance shifts, and a 30-second end game
 // (manual Table 6-2). The scout's clock counts the same direction as the
 // arena timer so a glance up matches what's on screen.
 //
-// Defense used to be a judgment call ("part of match" / "most of match").
-// It's timed instead: the scout arms a stopwatch when defense starts and
-// disarms it when it stops, and the seconds land in the submission. The
-// stopwatches only run while the match clock does, so a paused match (field
-// fault, timeout) never inflates a defense total.
+// Defense used to be a judgment call ("part of match" / "most of match"), and
+// so was a robot going dead. They're timed instead: the scout arms a stopwatch
+// when the thing starts and disarms it when it stops, and the seconds land in
+// the submission. The stopwatches only run while the match clock does, so a
+// paused match (field fault, timeout) never inflates a total.
 //
 // Everything here derives elapsed time from wall-clock timestamps rather than
 // accumulating ticks: a phone that throttles timers in a backgrounded tab
@@ -86,45 +86,50 @@ function stop(watch: Stopwatch, nowMs: number): Stopwatch {
     : { baseMs: watchMs(watch, nowMs), startedAtMs: null };
 }
 
-/** Which stopwatch a defense toggle drives. */
-export type DefenseKind = "played" | "against";
+/** Which stopwatch a hold button drives. */
+export type TimedKind = "played" | "against" | "immobilized";
+
+/** Every stopwatch the match clock drives, in the order they're offered. */
+export const TIMED_KINDS: readonly TimedKind[] = [
+  "played",
+  "against",
+  "immobilized",
+];
 
 export interface MatchClock {
   match: Stopwatch;
   played: Stopwatch;
   against: Stopwatch;
+  immobilized: Stopwatch;
   /**
-   * Whether each defense toggle is held down, tracked apart from whether its
+   * Whether each toggle is held down, tracked apart from whether its
    * stopwatch is running: pausing the match parks an armed stopwatch without
-   * disarming it, so resuming picks the defense back up rather than quietly
-   * dropping it on the floor.
+   * disarming it, so resuming picks the observation back up rather than
+   * quietly dropping it on the floor.
    */
-  armed: Record<DefenseKind, boolean>;
+  armed: Record<TimedKind, boolean>;
 }
 
 export const IDLE_CLOCK: MatchClock = {
   match: IDLE_STOPWATCH,
   played: IDLE_STOPWATCH,
   against: IDLE_STOPWATCH,
-  armed: { played: false, against: false },
+  immobilized: IDLE_STOPWATCH,
+  armed: { played: false, against: false, immobilized: false },
 };
 
 export function startMatch(clock: MatchClock, nowMs: number): MatchClock {
-  return {
-    ...clock,
-    match: start(clock.match, nowMs),
-    played: clock.armed.played ? start(clock.played, nowMs) : clock.played,
-    against: clock.armed.against ? start(clock.against, nowMs) : clock.against,
-  };
+  const next = { ...clock, match: start(clock.match, nowMs) };
+  for (const kind of TIMED_KINDS) {
+    if (clock.armed[kind]) next[kind] = start(clock[kind], nowMs);
+  }
+  return next;
 }
 
 export function pauseMatch(clock: MatchClock, nowMs: number): MatchClock {
-  return {
-    ...clock,
-    match: stop(clock.match, nowMs),
-    played: stop(clock.played, nowMs),
-    against: stop(clock.against, nowMs),
-  };
+  const next = { ...clock, match: stop(clock.match, nowMs) };
+  for (const kind of TIMED_KINDS) next[kind] = stop(clock[kind], nowMs);
+  return next;
 }
 
 export function toggleMatch(clock: MatchClock, nowMs: number): MatchClock {
@@ -134,12 +139,12 @@ export function toggleMatch(clock: MatchClock, nowMs: number): MatchClock {
 }
 
 /**
- * Arm or disarm one of the defense stopwatches. Arming while the match is
- * paused only records the intent — the seconds start when the match resumes.
+ * Arm or disarm one of the stopwatches. Arming while the match is paused only
+ * records the intent — the seconds start when the match resumes.
  */
-export function toggleDefense(
+export function toggleTimer(
   clock: MatchClock,
-  kind: DefenseKind,
+  kind: TimedKind,
   nowMs: number,
 ): MatchClock {
   const arming = !clock.armed[kind];

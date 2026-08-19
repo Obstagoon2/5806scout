@@ -92,15 +92,20 @@ export const MATCH_SCOUT_SECTIONS: readonly FormSection[] = [
         label: "Crossed during match",
         options: ["Bump", "Trench"],
       },
-      // Defense is timed, not eyeballed — the Match Scout page runs a
-      // stopwatch off the match clock and writes whole seconds here. They're
-      // counters so the Data tab averages them per team, and drive.ts weights
-      // them at 0 so seconds never read as points.
+      // Defense and going dead are timed, not eyeballed — the Match Scout page
+      // runs a stopwatch off the match clock and writes whole seconds here.
+      // They're counters so the Data tab averages them per team, and drive.ts
+      // weights them at 0 so seconds never read as points.
       { kind: "counter", id: "defenseSeconds", label: "Defense played (sec)" },
       {
         kind: "counter",
         id: "defendedSeconds",
         label: "Defended against (sec)",
+      },
+      {
+        kind: "counter",
+        id: "immobilizedSeconds",
+        label: "Immobilized (sec)",
       },
     ],
   },
@@ -128,12 +133,6 @@ export const MATCH_SCOUT_SECTIONS: readonly FormSection[] = [
       { kind: "counter", id: "fuelRate", label: "Fuel rate (balls/sec)", max: 25 },
       { kind: "counter", id: "driverSkill", label: "Driver skill (0–5)", max: 5 },
       { kind: "counter", id: "defenseSkill", label: "Defense skill (0–5)", max: 5 },
-      {
-        kind: "select",
-        id: "died",
-        label: "Died / immobilized",
-        options: ["No", "Briefly", "Most of match"],
-      },
       {
         kind: "select",
         id: "tipped",
