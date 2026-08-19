@@ -41,6 +41,9 @@ yarn-error.log*
 # firebase
 .firebase/
 firebase-debug.log
+# Written by the Firestore emulator during `npm run test:rules`.
+firestore-debug.log
+firestore-debug.*.log
 
 # typescript
 *.tsbuildinfo

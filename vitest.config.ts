@@ -18,6 +18,8 @@ export default defineConfig({
       "**/dist/**",
       "**/.claude/worktrees/**",
       "soft-hill-26e4/**",
+      // Needs a Firestore emulator; run it with `npm run test:rules`.
+      "firestore.rules.test.ts",
     ],
   },
   resolve: {

@@ -147,6 +147,15 @@ service cloud.firestore {
       match /pitScouting/{docId} {
         allow read, write: if isLinkedSisterTeam(teamId);
       }
+      // Robot photos and drawings. A sibling collection to pitScouting purely
+      // for weight (see src/lib/formMedia.ts) — the pit form splits them out
+      // so a listener on pitScouting doesn't drag every photo at the event
+      // over venue wifi. They are pit scouting data, so a linked sister team
+      // reaches them on the same terms; without this the pair shares a
+      // robot's answers but not its pictures.
+      match /pitScoutingMedia/{docId} {
+        allow read, write: if isLinkedSisterTeam(teamId);
+      }
       match /matchScouting/{docId} {
         allow read, write: if isLinkedSisterTeam(teamId);
       }
