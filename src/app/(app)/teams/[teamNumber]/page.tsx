@@ -5,6 +5,7 @@ import { useAuth } from "@/lib/auth/AuthProvider";
 import {
   aggregateByTeam,
   counterFieldIds,
+  counterNumber,
   selectFieldIds,
   type MatchSubmission,
 } from "@/lib/aggregate";
@@ -266,9 +267,7 @@ export default function TeamDetailPage() {
                     </td>
                     {counterIds.map((id) => (
                       <td key={id} className="stat px-3 py-2">
-                        {typeof s.values[id] === "number"
-                          ? (s.values[id] as number)
-                          : 0}
+                        {counterNumber(s.values[id])}
                       </td>
                     ))}
                     {selectIds.map((id) => (

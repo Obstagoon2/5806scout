@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   aggregateByTeam,
+  counterNumber,
   interquartileRange,
   median,
   percentileOfSorted,
@@ -31,7 +32,66 @@ function submission(
   };
 }
 
+describe("counterNumber", () => {
+  it("passes real numbers through, including zero and decimals", () => {
+    expect(counterNumber(0)).toBe(0);
+    expect(counterNumber(850)).toBe(850);
+    expect(counterNumber(8.2)).toBeCloseTo(8.2);
+  });
+
+  it("reads a numeric string as its number", () => {
+    // Regression: zeroing these put a big value in among the zeros, so
+    // sorting a column left it stranded mid-table instead of at the end —
+    // and the team's average silently lost a whole match.
+    expect(counterNumber("850")).toBe(850);
+    expect(counterNumber(" 12 ")).toBe(12);
+    expect(counterNumber("8.5")).toBeCloseTo(8.5);
+  });
+
+  it("reads anything that isn't a number as zero", () => {
+    expect(counterNumber(undefined)).toBe(0);
+    expect(counterNumber(null)).toBe(0);
+    expect(counterNumber("")).toBe(0);
+    expect(counterNumber("   ")).toBe(0);
+    expect(counterNumber("Climb")).toBe(0);
+    expect(counterNumber(["Bump"])).toBe(0);
+    expect(counterNumber(true)).toBe(0);
+  });
+
+  it("refuses non-finite numbers, which would poison a sort or an average", () => {
+    expect(counterNumber(NaN)).toBe(0);
+    expect(counterNumber(Infinity)).toBe(0);
+  });
+
+  it("sorts a stringy outlier to the end rather than into the middle", () => {
+    const rows = [
+      { id: "a", v: 0 },
+      { id: "b", v: 0 },
+      { id: "c", v: "850" },
+      { id: "d", v: 0 },
+      { id: "e", v: 2 },
+    ];
+    const sorted = [...rows].sort(
+      (x, y) => counterNumber(x.v) - counterNumber(y.v),
+    );
+    expect(sorted.at(-1)!.id).toBe("c");
+  });
+});
+
 describe("aggregateByTeam", () => {
+  it("counts a numeric string toward the average instead of zeroing it", () => {
+    const submissions = [
+      submission({ scoutedTeam: "254", values: { scored: 10 } }),
+      submission({
+        scoutedTeam: "254",
+        values: { scored: "20" as unknown as number },
+      }),
+    ];
+    const [agg] = aggregateByTeam(sections, submissions);
+    expect(agg.averages.scored).toBe(15);
+    expect(agg.samples.scored).toEqual([10, 20]);
+  });
+
   it("averages counter fields per team", () => {
     const result = aggregateByTeam(sections, [
       submission({ scoutedTeam: "254", values: { scored: 4, endgame: "Climb" } }),

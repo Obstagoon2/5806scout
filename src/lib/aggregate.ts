@@ -66,6 +66,26 @@ export function interquartileRange(values: readonly number[]): number | null {
   return q1 === null || q3 === null ? null : q3 - q1;
 }
 
+/**
+ * A counter answer as a number, for sorting and for the mean/median alike.
+ *
+ * Anything non-numeric reads as 0 — a skipped question, a field that changed
+ * kind, a value a past client stored as text. Numeric strings are parsed
+ * rather than zeroed: treating "850" as 0 doesn't just mis-sort the row (it
+ * lands among the zeros instead of at the end), it quietly drags the team's
+ * average down by a whole match.
+ */
+export function counterNumber(value: unknown): number {
+  if (typeof value === "number") return Number.isFinite(value) ? value : 0;
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    if (trimmed === "") return 0;
+    const parsed = Number(trimmed);
+    return Number.isFinite(parsed) ? parsed : 0;
+  }
+  return 0;
+}
+
 export function counterFieldIds(sections: readonly FormSection[]): string[] {
   return sections.flatMap((s) =>
     s.fields.filter((f) => f.kind === "counter").map((f) => f.id),
@@ -100,9 +120,7 @@ export function aggregateByTeam(
       // A match that never answered this counter reads as 0, the same way it
       // already counted toward the average — the mean and the median have to
       // be describing the same set of matches.
-      const values = teamSubmissions.map((s) =>
-        typeof s.values[id] === "number" ? (s.values[id] as number) : 0,
-      );
+      const values = teamSubmissions.map((s) => counterNumber(s.values[id]));
       samples[id] = values;
       averages[id] = values.reduce((sum, v) => sum + v, 0) / values.length;
     }

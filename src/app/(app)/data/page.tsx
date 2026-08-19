@@ -5,6 +5,7 @@ import { db } from "@/lib/firebase/client";
 import {
   aggregateByTeam,
   counterFieldIds,
+  counterNumber,
   interquartileRange,
   median,
   type MatchSubmission,
@@ -69,11 +70,11 @@ function columnValues(
   rows: readonly MatchSubmission[],
   id: string,
 ): number[] {
-  return rows.map((s) => (typeof s.values[id] === "number" ? (s.values[id] as number) : 0));
+  return rows.map((s) => counterNumber(s.values[id]));
 }
 
 function counterValue(row: MatchSubmission, id: string): number {
-  return typeof row.values[id] === "number" ? (row.values[id] as number) : 0;
+  return counterNumber(row.values[id]);
 }
 
 function mean(values: readonly number[]): number {
@@ -413,7 +414,7 @@ export default function DataPage() {
                     </td>
                     {counterIds.map((id) => (
                       <td key={id} className="stat px-3 py-2">
-                        {typeof s.values[id] === "number" ? (s.values[id] as number) : 0}
+                        {counterValue(s, id)}
                       </td>
                     ))}
                   </tr>
