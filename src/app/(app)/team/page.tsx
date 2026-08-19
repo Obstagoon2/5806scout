@@ -1,5 +1,6 @@
 "use client";
 
+import { DataExport } from "@/components/DataExport";
 import { useAuth } from "@/lib/auth/AuthProvider";
 import {
   assignMatchScouts,
@@ -636,6 +637,8 @@ export default function TeamPage() {
           )}
         </div>
       )}
+
+      {isAdmin && <DataExport />}
 
       {isAdmin && (
         <div className="flex flex-col gap-3">

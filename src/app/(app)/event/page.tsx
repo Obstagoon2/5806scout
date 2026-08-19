@@ -14,7 +14,38 @@ import { pitAddressFor, type NexusPitAddresses, type PitMap } from "@/lib/nexus"
 import { db } from "@/lib/firebase/client";
 import { fileToResizedDataUrl, isImageFile } from "@/lib/imageFile";
 import { doc, onSnapshot, setDoc } from "firebase/firestore";
+import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
+
+/**
+ * Team number or name, linking through to that team's breakdown — the same
+ * affordance the Picklist and Data tabs give, so tapping a team anywhere in
+ * the app lands in the same place.
+ *
+ * An empty label renders as a dash rather than an empty link: TBA does
+ * occasionally return a blank nickname, and an anchor with no text is
+ * unreachable by keyboard and unreadable by a screen reader.
+ */
+function TeamLink({
+  teamNumber,
+  children,
+}: {
+  teamNumber: number;
+  children: React.ReactNode;
+}) {
+  if (children === null || children === undefined || children === "") {
+    return <span className="text-graphite-400">—</span>;
+  }
+  return (
+    <Link
+      href={`/teams/${teamNumber}`}
+      className="underline-offset-2 hover:text-maroon-600 hover:underline dark:hover:text-maroon-400"
+      title={`Open ${teamNumber}'s summary`}
+    >
+      {children}
+    </Link>
+  );
+}
 
 type View = "teams" | "schedule" | "ranking" | "map";
 
@@ -395,11 +426,13 @@ function TeamsTable({ event }: { event: EventData }) {
             <tr key={t.teamNumber} className="transition hover:bg-graphite-50">
               <td className="stat px-3 py-2 font-semibold">
                 <span className="inline-flex items-center gap-1.5">
-                  {t.teamNumber}
+                  <TeamLink teamNumber={t.teamNumber}>{t.teamNumber}</TeamLink>
                   <ReliabilityWarning teamNumber={t.teamNumber} />
                 </span>
               </td>
-              <td className="px-3 py-2">{t.nickname}</td>
+              <td className="px-3 py-2">
+                <TeamLink teamNumber={t.teamNumber}>{t.nickname}</TeamLink>
+              </td>
               <td className="px-3 py-2 text-graphite-500">{t.city}</td>
               <td className="stat px-3 py-2">
                 {t.epa !== null ? t.epa.toFixed(1) : "—"}
@@ -902,11 +935,17 @@ function RankingTable({ eventKey, myTeam }: { eventKey: string; myTeam: string }
                   </td>
                   <td className="stat px-3 py-2 font-semibold">
                     <span className="inline-flex items-center gap-1.5">
-                      {row.teamNumber}
+                      <TeamLink teamNumber={row.teamNumber}>
+                        {row.teamNumber}
+                      </TeamLink>
                       <ReliabilityWarning teamNumber={row.teamNumber} />
                     </span>
                   </td>
-                  <td className="px-3 py-2">{row.teamName}</td>
+                  <td className="px-3 py-2">
+                    <TeamLink teamNumber={row.teamNumber}>
+                      {row.teamName}
+                    </TeamLink>
+                  </td>
                   <td className="stat px-3 py-2">
                     {row.wins !== null
                       ? `${row.wins}–${row.losses ?? 0}–${row.ties ?? 0}`
