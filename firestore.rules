@@ -6,12 +6,12 @@ rules_version = '2';
 //   match scout, etc. added in later milestones) that inherit the same
 //   same-team read/write rule below.
 //
-// Admin signup: anyone may sign up as their team's admin, but only the FIRST
-// claimant — the teams/{teamId}.adminUid rules below only let adminUid be set
-// once, so 'admin' is allowed on the profile at create time. A team can still
-// end up with several admins: an existing admin promotes teammates from the
-// Team tab, which the users/{uid} update rule below permits. What stays
-// blocked is self-escalation — a scout can never grant themselves the role.
+// Admin signup: a team may have as many admins as it likes, and any of them
+// may arrive by signing up with the admin box ticked — hence 'admin' is
+// allowed on the profile at create time. Admins are also made after the fact,
+// by an existing admin promoting a teammate from the Team tab, which the
+// users/{uid} update rule below permits. What stays blocked is
+// self-escalation — a scout can never grant themselves the role.
 service cloud.firestore {
   match /databases/{database}/documents {
 
@@ -59,8 +59,8 @@ service cloud.firestore {
 
     match /users/{userId} {
       // Signup: a user may only create their own active profile. 'admin' is
-      // permitted here because the one-admin-per-team gate lives on the team
-      // doc's adminUid rules (see header comment).
+      // permitted here because admins are no longer rationed one per team
+      // (see header comment).
       allow create: if isSignedIn()
         && request.auth.uid == userId
         && request.resource.data.role in ['scout', 'admin']
@@ -94,26 +94,22 @@ service cloud.firestore {
       // team number if it doesn't exist yet (first signup for a new team).
       allow create: if isSignedIn() && !exists(/databases/$(database)/documents/teams/$(teamId));
 
-      // Single-doc reads are public (no sensitive data — teamNumber/teamName/
-      // adminUid) so the signup form can check "does this team already have
-      // an admin?" before the visitor is signed in. Listing the collection
-      // still requires membership.
+      // Single-doc reads are public (no sensitive data — teamNumber/teamName)
+      // so signup and the team-lookup UI can resolve a team number before the
+      // visitor is signed in. Listing the collection still requires
+      // membership.
       allow get: if true;
       allow list: if isSameTeam(teamId);
 
-      // Normal team-doc edits are admin-only. The one exception: a brand new
-      // user may claim the team for themselves at signup — but only if nobody
-      // has claimed it yet, and only that one field changes. This is what lets
-      // signup (src/app/(auth)/signup/page.tsx) stop a stranger declaring
-      // themselves admin of an established team, at the database layer rather
-      // than just in the UI.
+      // Signing up as an admin no longer touches this doc at all — the role
+      // lives on users/{uid}, and a team that already exists is simply joined.
+      //
+      // This rule is admin-only, but note it is not the whole story: the
+      // recursive `match /{document=**}` further down also matches the team
+      // doc itself, so any teammate can in practice write it. Nothing is
+      // granted by that (authority comes from users/{uid}.role) — see the
+      // "gains a scout nothing" case in firestore.rules.test.ts.
       allow update: if isAdminOfTeam(teamId)
-        || (
-          isSignedIn()
-          && request.auth.uid == request.resource.data.adminUid
-          && !("adminUid" in resource.data)
-          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(["adminUid"])
-        )
         // Sister-team link: the OTHER team's admin stamps this team's half
         // of the link by presenting a live invite code this team's admin
         // generated (sisterInvites/{code} with fromTeamId == this team).

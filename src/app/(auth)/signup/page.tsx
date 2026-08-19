@@ -5,12 +5,13 @@ import { auth, db } from "@/lib/firebase/client";
 import {
   createUserWithEmailAndPassword,
   GoogleAuthProvider,
+  sendEmailVerification,
   signInWithPopup,
   signOut,
   updateProfile,
   type User,
 } from "firebase/auth";
-import { FirestoreError, doc, getDoc, runTransaction, serverTimestamp } from "firebase/firestore";
+import { doc, getDoc, runTransaction, serverTimestamp } from "firebase/firestore";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
@@ -26,47 +27,27 @@ export default function SignupPage() {
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
-  const ADMIN_EXISTS_MESSAGE = "A team member has already registered your team";
-
-  // Pre-checks the team's single admin slot (allowed pre-auth by
-  // firestore.rules — team docs are publicly gettable): most rejections
-  // happen here, before we ever create or sign in a Firebase Auth account.
-  async function checkAdminPrereqs(teamId: string): Promise<boolean> {
-    if (!asAdmin) return true;
-
-    const existingTeam = await getDoc(doc(db, "teams", teamId));
-    if (existingTeam.exists() && existingTeam.data().adminUid) {
-      setError(ADMIN_EXISTS_MESSAGE);
-      return false;
-    }
-    return true;
-  }
-
   // Creates the team (if new) + user profile docs for a freshly
   // authenticated user. Shared by the email/password and Google paths.
+  //
+  // A team can have any number of admins, so signing up as one only writes
+  // role: "admin" on the profile — nothing on the team doc is claimed.
   async function createProfileAndTeam(newUser: User, teamId: string): Promise<boolean> {
     const teamRef = doc(db, "teams", teamId);
     const userRef = doc(db, "users", newUser.uid);
 
     try {
-      // Transaction closes the race between the pre-check above and two
-      // admins signing up for the same team at nearly the same time: the
-      // security rules only let the *first* writer set teams/{id}.adminUid.
+      // Transaction so two people signing up for a brand-new team at nearly
+      // the same time can't both create — and disagree about — its team doc.
       await runTransaction(db, async (tx) => {
         const teamSnap = await tx.get(teamRef);
-        if (asAdmin && teamSnap.exists() && teamSnap.data().adminUid) {
-          throw new Error(ADMIN_EXISTS_MESSAGE);
-        }
 
         if (!teamSnap.exists()) {
           tx.set(teamRef, {
             teamNumber: teamId,
             teamName: teamId,
             createdAt: serverTimestamp(),
-            ...(asAdmin ? { adminUid: newUser.uid } : {}),
           });
-        } else if (asAdmin) {
-          tx.update(teamRef, { adminUid: newUser.uid });
         }
 
         tx.set(userRef, {
@@ -79,16 +60,13 @@ export default function SignupPage() {
         });
       });
       return true;
-    } catch (txErr) {
-      // Roll back the auth account we just created — otherwise the
-      // rejected admin can never sign up again with this email. If the
-      // delete itself fails, at least sign out so the user isn't left
-      // half-authenticated with no profile.
+    } catch {
+      // Roll back the auth account we just created — otherwise the rejected
+      // signup can never retry with this email. If the delete itself fails,
+      // at least sign out so the user isn't left half-authenticated with no
+      // profile.
       await newUser.delete().catch(() => signOut(auth).catch(() => {}));
-      const isAdminExists =
-        (txErr instanceof Error && txErr.message === ADMIN_EXISTS_MESSAGE) ||
-        (txErr instanceof FirestoreError && txErr.code === "permission-denied");
-      setError(isAdminExists ? ADMIN_EXISTS_MESSAGE : "Signup failed");
+      setError("Signup failed");
       return false;
     }
   }
@@ -100,12 +78,15 @@ export default function SignupPage() {
 
     try {
       const teamId = teamNumber.trim();
-      if (!(await checkAdminPrereqs(teamId))) return;
-
       const credential = await createUserWithEmailAndPassword(auth, email, password);
       await updateProfile(credential.user, { displayName: fullName });
 
       if (await createProfileAndTeam(credential.user, teamId)) {
+        // A typed-in address is the one thing signup can't take on trust, so
+        // send the proof-of-ownership link now. RequireAuth holds them at the
+        // "check your inbox" screen until it's clicked; a failure to send
+        // isn't fatal, because that screen can resend.
+        await sendEmailVerification(credential.user).catch(() => {});
         router.replace("/home");
       }
     } catch (err) {
@@ -128,8 +109,6 @@ export default function SignupPage() {
     setSubmitting(true);
 
     try {
-      if (!(await checkAdminPrereqs(teamId))) return;
-
       const credential = await signInWithPopup(auth, new GoogleAuthProvider());
 
       // Returning user who already has a profile — just take them home.
@@ -171,9 +150,10 @@ export default function SignupPage() {
           {asAdmin ? "Create an admin account" : "Create a scout account"}
         </h1>
         <p className="mt-1 text-sm text-graphite-500">
-          Scouts sign up with just the form below. The first admin to sign up
-          claims the team; after that, any admin can promote teammates from the
-          Team tab.
+          Scouts sign up with just the form below, then confirm the emailed
+          link. A team can have as many admins as it needs — tick the box to
+          sign up as one, or have an existing admin promote you from the Team
+          tab.
         </p>
 
         <form onSubmit={handleSubmit} className="mt-6 flex flex-col gap-4">

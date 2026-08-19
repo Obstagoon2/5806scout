@@ -24,7 +24,7 @@ import {
   type ScoutDuty,
 } from "@/lib/scoutDuty";
 import type { EventData } from "@/lib/eventData";
-import { db } from "@/lib/firebase/client";
+import { auth, db } from "@/lib/firebase/client";
 import {
   createSisterInvite,
   redeemSisterInvite,
@@ -40,7 +40,15 @@ import {
   updateDoc,
   where,
 } from "firebase/firestore";
+import { signOut } from "firebase/auth";
+import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
+
+// Said in two places — the disabled Delete button's tooltip and the error a
+// click produces — so it reads the same either way. The route says the same
+// thing in its own words when the browser is out of date.
+const LAST_ADMIN_MESSAGE =
+  "Make someone else an admin first, then you can delete your account.";
 
 // Config writes live at module scope: each stamps its own "when", which keeps
 // the clock read out of the component body entirely (where the React Compiler
@@ -81,6 +89,7 @@ async function writeScoutDuties(
 }
 
 export default function TeamPage() {
+  const router = useRouter();
   const { profile, user, team, dataTeamId } = useAuth();
   const [roster, setRoster] = useState<UserProfile[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -168,6 +177,12 @@ export default function TeamPage() {
   }, [dataTeamId]);
 
   const isAdmin = profile?.role === "admin";
+  // Own team only: a sister team's admins are no help here, since neither
+  // team may touch the other's roster.
+  const ownTeamAdmins = roster.filter(
+    (m) => m.teamId === profile?.teamId && m.role === "admin",
+  );
+  const isLastAdmin = isAdmin && ownTeamAdmins.length <= 1;
   const activeScouts = roster.filter((m) => m.role === "scout" && m.active);
   const activeScoutUids = activeScouts.map((m) => m.uid);
 
@@ -396,19 +411,31 @@ export default function TeamPage() {
   }
 
   /**
-   * Permanently delete a teammate: both their login and their roster entry,
-   * which frees their email so they can sign up again or be invited back.
-   * Unlike Deactivate this cannot be undone, hence the confirm.
+   * Permanently delete a teammate — or yourself: both the login and the roster
+   * entry go, which frees that email so the person can sign up again or be
+   * invited back. Unlike Deactivate this cannot be undone, hence the confirm.
    *
-   * Runs through /api/delete-member because deleting someone else's auth
-   * account needs the service account — firestore.rules still forbids every
-   * client from deleting a users/{uid} doc.
+   * Runs through /api/delete-member because deleting an auth account needs the
+   * service account — firestore.rules still forbids every client from deleting
+   * a users/{uid} doc.
+   *
+   * Deleting yourself is the one case that can leave a team stranded, so the
+   * last admin is turned away here and again in the route (which is the check
+   * that actually counts — this one just saves a round trip).
    */
   async function deleteMember(member: UserProfile) {
-    if (!profile || member.uid === user?.uid) return;
+    if (!profile || !user) return;
+    const isSelf = member.uid === user.uid;
+
+    if (isSelf && isLastAdmin) {
+      setError(LAST_ADMIN_MESSAGE);
+      return;
+    }
     if (
       !window.confirm(
-        `Permanently delete ${member.fullName}? This deletes their account and removes them from the roster. It cannot be undone — they would have to sign up again or be invited back.`,
+        isSelf
+          ? `Permanently delete your own account? You'll be signed out and removed from Team ${profile.teamId}. It cannot be undone — you would have to sign up again or be invited back.`
+          : `Permanently delete ${member.fullName}? This deletes their account and removes them from the roster. It cannot be undone — they would have to sign up again or be invited back.`,
       )
     ) {
       return;
@@ -416,12 +443,12 @@ export default function TeamPage() {
     setError(null);
     setDeletingUid(member.uid);
     try {
-      const idToken = await user?.getIdToken();
+      const idToken = await user.getIdToken();
       const res = await fetch("/api/delete-member", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${idToken ?? ""}`,
+          Authorization: `Bearer ${idToken}`,
         },
         body: JSON.stringify({ uid: member.uid }),
       });
@@ -430,8 +457,17 @@ export default function TeamPage() {
       } | null;
       if (!res.ok) {
         setError(body?.error ?? "Could not delete that member — try again.");
+        return;
       }
-      // On success the roster listener drops the row on its own.
+      // Deleting yourself leaves this tab holding a token for an account that
+      // no longer exists, and the roster listener has nothing to remove it
+      // from — so end the session explicitly rather than waiting for the next
+      // token refresh to fail.
+      if (isSelf) {
+        await signOut(auth).catch(() => {});
+        router.replace("/login");
+      }
+      // Otherwise the roster listener drops the row on its own.
     } catch {
       setError("Could not delete that member — check your connection.");
     } finally {
@@ -781,6 +817,25 @@ export default function TeamPage() {
                   {DUTY_LABELS[dutyFor(dutiesDoc.duties, member.uid)]}
                 </span>
               )}
+              {/* Your own row gets one action: leave the team for good. The
+                  role and active toggles are withheld on purpose — an admin
+                  demoting or deactivating themselves is how a team ends up
+                  with nobody who can put it right. */}
+              {isAdmin && member.uid === user?.uid && (
+                <button
+                  type="button"
+                  onClick={() => void deleteMember(member)}
+                  disabled={deletingUid === member.uid || isLastAdmin}
+                  title={
+                    isLastAdmin
+                      ? LAST_ADMIN_MESSAGE
+                      : "Permanently delete your own account"
+                  }
+                  className="btn-ghost border border-maroon-200 px-2.5 py-1 text-maroon-700 dark:border-maroon-700 dark:text-maroon-300 disabled:opacity-40"
+                >
+                  {deletingUid === member.uid ? "Deleting…" : "Delete my account"}
+                </button>
+              )}
               {isAdmin && member.uid !== user?.uid && member.teamId === profile?.teamId && (
                 <>
                   <button
@@ -812,6 +867,13 @@ export default function TeamPage() {
           </li>
         ))}
       </ul>
+
+      {isAdmin && isLastAdmin && (
+        <p className="text-xs text-graphite-500">
+          You&apos;re the only admin on this team, so your own account is
+          locked. {LAST_ADMIN_MESSAGE}
+        </p>
+      )}
 
       {/* Last on the page, in workflow order: download the season, then wipe
           it. The reset is destructive and deliberately sits below everything

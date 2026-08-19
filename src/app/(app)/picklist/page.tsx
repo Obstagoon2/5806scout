@@ -28,7 +28,6 @@ import {
   reconcileOrder,
   restoreFromDoNotPick,
   splitDoNotPick,
-  toggleStruck,
   type PicklistDoc,
 } from "@/lib/picklist";
 import { collection, doc, onSnapshot, setDoc } from "firebase/firestore";
@@ -154,7 +153,10 @@ export default function PicklistPage() {
       picklist?.doNotPick ?? [],
     );
   }, [event, picklist]);
-  const struck = useMemo(() => new Set(picklist?.struck ?? []), [picklist]);
+  // Nothing sets or shows this any more — the Struck toggle is gone — but a
+  // saved picklist still carries the field, so it rides along on every write
+  // rather than being quietly dropped.
+  const struck = useMemo(() => picklist?.struck ?? [], [picklist]);
   const notes = useMemo(() => picklist?.notes ?? {}, [picklist]);
 
   const teamsByNumber = useMemo(
@@ -266,10 +268,6 @@ export default function PicklistPage() {
     void save(moveItem(order, from, to), [...struck], [...doNotPick]);
   }
 
-  function handleStrike(team: number) {
-    void save(order, toggleStruck([...struck], team), [...doNotPick]);
-  }
-
   function handleDoNotPick(team: number) {
     const next = moveToDoNotPick(order, doNotPick, team);
     void save(next.order, [...struck], next.doNotPick);
@@ -289,7 +287,7 @@ export default function PicklistPage() {
         </h1>
         <p className="mt-1 text-sm text-graphite-500">
           {isAdmin
-            ? "Drag rows (or use the arrows) to rank alliance picks. Tap a team number or name to open its summary, or Struck to cross one off once it's picked."
+            ? "Drag rows (or use the arrows) to rank alliance picks. Tap a team number or name to open its summary, or DNP to move one to the Do Not Pick list."
             : "Live ranking maintained by your admin — updates in real time. Notes are open to everyone."}
         </p>
       </div>
@@ -332,7 +330,6 @@ export default function PicklistPage() {
                 <table className="w-full min-w-max text-left text-sm">
                   <thead>
                     <tr className="border-b border-graphite-200 text-xs uppercase tracking-wider text-graphite-500">
-                      <th className="px-3 py-2.5">Rank</th>
                       <th className="px-3 py-2.5">Team</th>
                       <th className="px-3 py-2.5">Name</th>
                       <th className="px-3 py-2.5">Event rank</th>
@@ -374,23 +371,8 @@ export default function PicklistPage() {
                           }}
                           className="transition hover:bg-graphite-50"
                         >
-                          <td
-                            className={`stat px-3 py-2 font-semibold ${
-                              index < 3
-                                ? "text-maroon-600 dark:text-maroon-400"
-                                : "text-graphite-400"
-                            }`}
-                          >
-                            {index + 1}
-                          </td>
                           <td className="px-3 py-2">
-                            <span
-                              className={`inline-flex items-center gap-1.5 ${
-                                struck.has(teamNumber)
-                                  ? "line-through opacity-50"
-                                  : ""
-                              }`}
-                            >
+                            <span className="inline-flex items-center gap-1.5">
                               <Link
                                 href={`/teams/${teamNumber}`}
                                 // Anchors drag themselves by default, which
@@ -404,11 +386,7 @@ export default function PicklistPage() {
                               <ReliabilityWarning teamNumber={teamNumber} />
                             </span>
                           </td>
-                          <td
-                            className={`px-3 py-2 ${
-                              struck.has(teamNumber) ? "line-through opacity-50" : ""
-                            }`}
-                          >
+                          <td className="px-3 py-2">
                             <Link
                               href={`/teams/${teamNumber}`}
                               draggable={false}
@@ -472,24 +450,6 @@ export default function PicklistPage() {
                                   className="rounded border border-graphite-200 px-2 py-1 text-xs text-graphite-600 transition hover:border-graphite-300 disabled:opacity-30"
                                 >
                                   ↓
-                                </button>
-                                <button
-                                  type="button"
-                                  aria-pressed={struck.has(teamNumber)}
-                                  aria-label={`${struck.has(teamNumber) ? "Restore" : "Strike"} ${teamNumber}`}
-                                  onClick={() => handleStrike(teamNumber)}
-                                  className={`rounded border px-2 py-1 text-xs font-medium transition ${
-                                    struck.has(teamNumber)
-                                      ? "border-graphite-400 bg-graphite-100 text-graphite-700"
-                                      : "border-graphite-200 text-graphite-600 hover:border-graphite-300"
-                                  }`}
-                                  title={
-                                    struck.has(teamNumber)
-                                      ? "Team is struck — tap to restore"
-                                      : "Strike once this team is picked"
-                                  }
-                                >
-                                  Struck
                                 </button>
                                 <button
                                   type="button"

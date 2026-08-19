@@ -134,6 +134,61 @@ describe("a one-sided link", () => {
   });
 });
 
+// A team may have any number of admins, and any of them may arrive through
+// signup rather than being promoted. What must stay shut is self-promotion —
+// the rules are the only thing stopping a scout typing themselves a new role.
+describe("who may become an admin", () => {
+  it("lets a second admin sign up for a team that already has one", async () => {
+    // teamC already has carol as an admin.
+    await assertSucceeds(
+      setDoc(doc(as("frank"), "users/frank"), {
+        teamId: "teamC",
+        role: "admin",
+        active: true,
+      }),
+    );
+  });
+
+  it("still refuses a profile created for somebody else", async () => {
+    await assertFails(
+      setDoc(doc(as("frank"), "users/mallory"), {
+        teamId: "teamC",
+        role: "admin",
+        active: true,
+      }),
+    );
+  });
+
+  it("never lets a scout promote themselves", async () => {
+    await assertFails(
+      setDoc(doc(as("erin"), "users/erin"), { teamId: "teamA", role: "admin" }),
+    );
+  });
+
+  it("lets an admin promote a teammate", async () => {
+    await assertSucceeds(
+      setDoc(doc(as("alice"), "users/erin"), { teamId: "teamA", role: "admin" }),
+    );
+  });
+
+  // A scout CAN write their own team doc — the recursive `match /{document=**}`
+  // nested under /teams/{teamId} matches the team doc itself, not just its
+  // subcollections. That is worth knowing, but it grants no authority: the
+  // role that gates everything lives on users/{uid}, which the same scout
+  // cannot touch. This test pins that separation down.
+  it("gains a scout nothing — the role lives on users/{uid}, not the team doc", async () => {
+    await assertSucceeds(
+      setDoc(doc(as("erin"), "teams/teamA"), {
+        teamNumber: "5806",
+        selfDeclaredAdmin: true,
+      }),
+    );
+    await assertFails(
+      deleteDoc(doc(as("erin"), "teams/teamA/pitScouting/doc1")),
+    );
+  });
+});
+
 // The Team tab's reset wipes an event in one action, so the rules — not just
 // the UI — decide who may delete. Everything a team collects is admin-only,
 // with one carve-out for withdrawing a talkie request you posted yourself.

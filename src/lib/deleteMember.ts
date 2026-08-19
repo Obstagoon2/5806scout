@@ -9,6 +9,11 @@ import { getAccessToken, readServiceAccount } from "@/lib/googleServiceAccount";
 // strand the auth account and leave that email permanently unusable —
 // accounts:signUp and the invite flow would both fail with EMAIL_EXISTS.
 //
+// An admin may delete themselves as well as a teammate, with one condition:
+// the team must not be left without an admin. Nobody outside the team can
+// hand out the role, so an adminless team is a dead end rather than an
+// inconvenience — hence the last-admin guard below.
+//
 // Deleting another user's auth account is privileged, so unlike inviteScout
 // this needs the service account (see googleServiceAccount.ts). The profile
 // doc is deleted with that same token, which is why firestore.rules can keep
@@ -24,6 +29,10 @@ export class DeleteMemberError extends Error {
     super(message);
     this.status = status;
   }
+}
+
+function runQueryUrl(): string {
+  return `https://firestore.googleapis.com/v1/projects/${config.firebase.projectId}/databases/(default)/documents:runQuery`;
 }
 
 function firestoreDocUrl(uid: string): string {
@@ -69,6 +78,67 @@ async function getProfile(
   };
 }
 
+/** Is there an admin on this team other than `uid`?
+ *
+ *  Asked only when an admin is deleting themselves. A team with no admin can
+ *  never regain one — nobody left could promote anybody — so this is the
+ *  check that stops the last admin walking out the door. Two results are
+ *  enough to answer it: the caller is necessarily one of them, so a second
+ *  row means somebody else can take over.
+ */
+async function otherAdminExists(
+  teamId: string,
+  uid: string,
+  accessToken: string,
+): Promise<boolean> {
+  const res = await fetch(runQueryUrl(), {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      structuredQuery: {
+        from: [{ collectionId: "users" }],
+        where: {
+          compositeFilter: {
+            op: "AND",
+            filters: [
+              {
+                fieldFilter: {
+                  field: { fieldPath: "teamId" },
+                  op: "EQUAL",
+                  value: { stringValue: teamId },
+                },
+              },
+              {
+                fieldFilter: {
+                  field: { fieldPath: "role" },
+                  op: "EQUAL",
+                  value: { stringValue: "admin" },
+                },
+              },
+            ],
+          },
+        },
+        limit: 2,
+      },
+    }),
+  });
+  if (!res.ok) {
+    throw new DeleteMemberError(
+      "Could not check who else administers this team — nothing was changed.",
+      502,
+    );
+  }
+  // runQuery streams result rows; rows carrying only a readTime (the "no
+  // matches" shape) have no `document` and must not be counted.
+  const rows = (await res.json()) as Array<{ document?: { name?: string } }>;
+  return rows.some(
+    (row) => row.document?.name && !row.document.name.endsWith(`/users/${uid}`),
+  );
+}
+
 /** Resolve the caller's ID token to a uid, proving they are who they claim. */
 async function resolveCallerUid(idToken: string): Promise<string> {
   const res = await fetch(
@@ -108,16 +178,6 @@ export async function deleteMember(
 
   const callerUid = await resolveCallerUid(callerIdToken);
 
-  // Checked before anything is read, so a self-delete can't get far enough to
-  // matter: the caller is always an admin, so refusing it is also what
-  // guarantees a team can never delete its way out of having an admin.
-  if (callerUid === targetUid) {
-    throw new DeleteMemberError(
-      "You can't delete your own account.",
-      400,
-    );
-  }
-
   let accessToken: string;
   try {
     accessToken = await getAccessToken(account);
@@ -143,6 +203,19 @@ export async function deleteMember(
     throw new DeleteMemberError(
       "You can only delete members of your own team.",
       403,
+    );
+  }
+
+  // Leaving the team yourself is allowed — walking out with the only set of
+  // keys is not. Deleting another admin never needs this check: the caller is
+  // an admin of the same team, so one always remains.
+  if (
+    callerUid === targetUid &&
+    !(await otherAdminExists(caller.teamId, callerUid, accessToken))
+  ) {
+    throw new DeleteMemberError(
+      "You're the only admin on this team. Make someone else an admin first, then delete your account.",
+      409,
     );
   }
 

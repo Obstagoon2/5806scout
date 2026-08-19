@@ -40,13 +40,24 @@ function profileDoc(role: string, teamId: string, fullName = "Ada Lovelace") {
   });
 }
 
+/** A runQuery result row for an admin profile. */
+function adminRow(uid: string) {
+  return {
+    document: {
+      name: `projects/test-project/databases/(default)/documents/users/${uid}`,
+    },
+  };
+}
+
 /** Dispatches on deleteMember.ts's actual call sequence: lookup, then the
- *  caller's profile, the target's profile, the auth delete, the doc delete. */
+ *  caller's profile, the target's profile, the admin head-count (self-delete
+ *  only), the auth delete, the doc delete. */
 function mockFetchSequence(
   handlers: Partial<{
     lookup: () => Response;
     callerProfile: () => Response;
     targetProfile: () => Response;
+    adminQuery: () => Response;
     authDelete: () => Response;
     docDelete: () => Response;
   }> = {},
@@ -59,6 +70,13 @@ function mockFetchSequence(
     }
     if (url.includes("accounts:delete")) {
       return handlers.authDelete?.() ?? jsonResponse({});
+    }
+    if (url.includes(":runQuery")) {
+      // Default: the caller is not the only admin.
+      return (
+        handlers.adminQuery?.() ??
+        jsonResponse([adminRow("caller-uid"), adminRow("other-admin")])
+      );
     }
     if (url.includes("firestore.googleapis.com")) {
       if (init?.method === "DELETE") {
@@ -123,12 +141,72 @@ describe("deleteMember", () => {
     ).rejects.toMatchObject({ status: 501 } satisfies Partial<DeleteMemberError>);
   });
 
-  it("refuses to delete yourself, which is what keeps a team having an admin", async () => {
-    vi.stubGlobal("fetch", mockFetchSequence());
+  it("deletes yourself once another admin can take over", async () => {
+    const fetchMock = mockFetchSequence();
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(deleteMember("caller-token", "caller-uid")).resolves.toEqual({
+      fullName: "Admin",
+    });
+    expect(
+      fetchMock.mock.calls.some(
+        ([url, init]) =>
+          (url as string).includes("/users/caller-uid") &&
+          (init as RequestInit | undefined)?.method === "DELETE",
+      ),
+    ).toBe(true);
+  });
+
+  it("refuses to delete the last admin — nobody left could grant the role", async () => {
+    vi.stubGlobal(
+      "fetch",
+      mockFetchSequence({
+        adminQuery: () => jsonResponse([adminRow("caller-uid")]),
+      }),
+    );
 
     await expect(
       deleteMember("caller-token", "caller-uid"),
-    ).rejects.toMatchObject({ status: 400 });
+    ).rejects.toMatchObject({ status: 409 });
+  });
+
+  it("treats an empty runQuery result as having no other admin", async () => {
+    // runQuery answers "no matches" with a row carrying only a readTime.
+    vi.stubGlobal(
+      "fetch",
+      mockFetchSequence({ adminQuery: () => jsonResponse([{ readTime: "t" }]) }),
+    );
+
+    await expect(
+      deleteMember("caller-token", "caller-uid"),
+    ).rejects.toMatchObject({ status: 409 });
+  });
+
+  it("changes nothing when the admin head-count itself fails", async () => {
+    const fetchMock = mockFetchSequence({
+      adminQuery: () => jsonResponse({}, false, 500),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(
+      deleteMember("caller-token", "caller-uid"),
+    ).rejects.toMatchObject({ status: 502 });
+    expect(
+      fetchMock.mock.calls.some(([url]) =>
+        (url as string).includes("accounts:delete"),
+      ),
+    ).toBe(false);
+  });
+
+  it("skips the head-count when deleting someone else", async () => {
+    const fetchMock = mockFetchSequence();
+    vi.stubGlobal("fetch", fetchMock);
+
+    await deleteMember("caller-token", "target-uid");
+
+    expect(
+      fetchMock.mock.calls.some(([url]) => (url as string).includes(":runQuery")),
+    ).toBe(false);
   });
 
   it("throws 401 when the caller's ID token doesn't resolve", async () => {
