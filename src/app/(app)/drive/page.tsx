@@ -80,6 +80,9 @@ export default function DrivePage() {
     return () => clearInterval(timer);
   }, []);
 
+  // NaN until the auth team doc resolves, and for a non-numeric team number.
+  // Anything user-visible that reads it has to guard first — isOwnTeam is
+  // false against NaN, which would otherwise offer "Back to Team NaN".
   const myTeamNumber = Number(team?.teamNumber);
   // Which team the dashboard is following. Null means "whoever's signed in" —
   // kept null rather than seeded so the default survives the team doc loading
@@ -212,7 +215,7 @@ export default function DrivePage() {
               ))}
             </select>
           </label>
-          {!isOwnTeam && (
+          {!isOwnTeam && Number.isInteger(myTeamNumber) && (
             <button
               type="button"
               onClick={() => setFocusTeam(null)}
@@ -743,11 +746,16 @@ function TeamDrawer({
         );
         setPitLoaded(true);
       },
+      // A failed read still has to resolve the drawer: without this the
+      // listener errors silently and the panel sits on "Loading…" forever
+      // with nothing to tell the drive team it won't arrive.
+      () => setPitLoaded(true),
     );
     const unsubMedia = onSnapshot(
       doc(db, "teams", dataTeamId, PIT_MEDIA_COLLECTION, teamId),
       (snapshot) =>
         setMedia((snapshot.data()?.values as FormValues | undefined) ?? {}),
+      () => setMedia({}),
     );
     return () => {
       unsubPit();

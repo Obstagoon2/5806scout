@@ -263,6 +263,8 @@ export default function DataPage() {
       if (rawSort.key === "match") return factor * (a.matchNumber - b.matchNumber);
       if (rawSort.key === "team")
         return factor * compareTeam(a.scoutedTeam, b.scoutedTeam);
+      if (rawSort.key === "scout")
+        return factor * (a.scoutName ?? "").localeCompare(b.scoutName ?? "");
       return (
         factor * (counterValue(a, rawSort.key) - counterValue(b, rawSort.key))
       );
@@ -387,6 +389,12 @@ export default function DataPage() {
                     sort={rawSort}
                     onSort={setRawSort}
                   />
+                  <SortableTh
+                    label="Scout"
+                    sortKey="scout"
+                    sort={rawSort}
+                    onSort={setRawSort}
+                  />
                   {counterIds.map((id) => (
                     <SortableTh
                       key={id}
@@ -411,6 +419,9 @@ export default function DataPage() {
                         />
                       </span>
                     </td>
+                    <td className="px-3 py-2 text-graphite-600">
+                      {s.scoutName || "—"}
+                    </td>
                     {counterIds.map((id) => (
                       <td key={id} className="stat px-3 py-2">
                         {typeof s.values[id] === "number" ? (s.values[id] as number) : 0}
@@ -421,7 +432,7 @@ export default function DataPage() {
                 {sortedRows.length === 0 && (
                   <tr>
                     <td
-                      colSpan={2 + counterIds.length}
+                      colSpan={3 + counterIds.length}
                       className="px-3 py-8 text-center text-graphite-400"
                     >
                       No submissions{submissions.length > 0 ? " match the filters" : " yet"}.
@@ -440,6 +451,7 @@ export default function DataPage() {
                     <td className="stat px-3 py-2.5 text-graphite-500">
                       {filtered.length} match{filtered.length === 1 ? "" : "es"}
                     </td>
+                    <td />
                     {counterIds.map((id) => (
                       <td key={id} className="stat px-3 py-2.5">
                         <CounterStat

@@ -183,6 +183,11 @@ export function buildTeamProfiles(
     const edges: FieldEdge[] = [];
     for (const [fieldId, eventAvg] of Object.entries(baseline)) {
       if (eventAvg <= 0) continue;
+      // Only scoring counters can be a strength or a weakness. Without this
+      // the zero-weighted ones — seconds defended, fuel rate, the 0–5 skill
+      // ratings, and every custom tally — compete for the chips, so a robot
+      // that simply got defended a lot reads as "strong at being defended".
+      if (counterWeight(fieldId, weights) <= 0) continue;
       const avg = aggregate.averages[fieldId] ?? 0;
       edges.push({ fieldId, avg, eventAvg, ratio: avg / eventAvg });
     }

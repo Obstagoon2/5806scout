@@ -110,6 +110,40 @@ describe("buildTeamProfiles", () => {
     aggregate("3", { low: 5, high: 2.5 }), // dead average
   ];
 
+  it("leaves zero-weighted counters out of the strength and weakness chips", () => {
+    // Regression: edges were built from every counter in the baseline, so a
+    // robot that simply got defended a lot surfaced "Defended against" as a
+    // top strength, and a custom tally could outrank a real scoring field.
+    const profiles = buildTeamProfiles(SECTIONS, aggregates, { high: 0 }, []);
+    const strong = profiles.get(1)!;
+    expect(strong.strengths.map((e) => e.fieldId)).toEqual(["low"]);
+    expect(profiles.get(2)!.weaknesses.map((e) => e.fieldId)).toEqual(["low"]);
+  });
+
+  it("keeps custom counters out of the chips — they are never scoring fields", () => {
+    const sections: FormSection[] = [
+      {
+        title: "Teleop",
+        fields: [
+          { kind: "counter", id: "low", label: "Scored — low" },
+          { kind: "counter", id: "custom_tally", label: "Our own tally" },
+        ],
+      },
+    ];
+    const profiles = buildTeamProfiles(
+      sections,
+      [
+        aggregate("1", { low: 8, custom_tally: 40 }),
+        aggregate("2", { low: 2, custom_tally: 1 }),
+      ],
+      {},
+      [],
+    );
+    expect(profiles.get(1)!.strengths.map((e) => e.fieldId)).not.toContain(
+      "custom_tally",
+    );
+  });
+
   it("marks scouted teams with weighted points and flags edges", () => {
     const profiles = buildTeamProfiles(SECTIONS, aggregates, { high: 2 }, []);
     const strong = profiles.get(1)!;

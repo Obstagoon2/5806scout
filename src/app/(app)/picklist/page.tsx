@@ -28,6 +28,7 @@ import {
   reconcileOrder,
   restoreFromDoNotPick,
   splitDoNotPick,
+  toggleStruck,
   type PicklistDoc,
 } from "@/lib/picklist";
 import { collection, doc, onSnapshot, setDoc } from "firebase/firestore";
@@ -217,9 +218,15 @@ export default function PicklistPage() {
     if (!profile) return;
     setSaveError(null);
     try {
+      // Merge, not overwrite: notes live on this same doc and are written
+      // separately by every scout (see saveNotes). A plain setDoc here
+      // replaces the document, so one admin reordering a row would wipe every
+      // note on the board. The arrays below still replace wholesale, which is
+      // what a ranking edit means.
       await setDoc(
         doc(db, "teams", profile.teamId, "config", "picklist"),
         makePicklistDoc(nextOrder, nextStruck, nextDoNotPick),
+        { merge: true },
       );
     } catch {
       setSaveError("Could not save the picklist — check your connection.");
@@ -259,6 +266,10 @@ export default function PicklistPage() {
     void save(moveItem(order, from, to), [...struck], [...doNotPick]);
   }
 
+  function handleStrike(team: number) {
+    void save(order, toggleStruck([...struck], team), [...doNotPick]);
+  }
+
   function handleDoNotPick(team: number) {
     const next = moveToDoNotPick(order, doNotPick, team);
     void save(next.order, [...struck], next.doNotPick);
@@ -278,7 +289,7 @@ export default function PicklistPage() {
         </h1>
         <p className="mt-1 text-sm text-graphite-500">
           {isAdmin
-            ? "Drag rows (or use the arrows) to rank alliance picks. Tap the team number or name to strike it once picked."
+            ? "Drag rows (or use the arrows) to rank alliance picks. Tap a team number or name to open its summary, or Struck to cross one off once it's picked."
             : "Live ranking maintained by your admin — updates in real time. Notes are open to everyone."}
         </p>
       </div>
@@ -373,7 +384,13 @@ export default function PicklistPage() {
                             {index + 1}
                           </td>
                           <td className="px-3 py-2">
-                            <span className="inline-flex items-center gap-1.5">
+                            <span
+                              className={`inline-flex items-center gap-1.5 ${
+                                struck.has(teamNumber)
+                                  ? "line-through opacity-50"
+                                  : ""
+                              }`}
+                            >
                               <Link
                                 href={`/teams/${teamNumber}`}
                                 // Anchors drag themselves by default, which
@@ -387,7 +404,11 @@ export default function PicklistPage() {
                               <ReliabilityWarning teamNumber={teamNumber} />
                             </span>
                           </td>
-                          <td className="px-3 py-2">
+                          <td
+                            className={`px-3 py-2 ${
+                              struck.has(teamNumber) ? "line-through opacity-50" : ""
+                            }`}
+                          >
                             <Link
                               href={`/teams/${teamNumber}`}
                               draggable={false}
@@ -451,6 +472,24 @@ export default function PicklistPage() {
                                   className="rounded border border-graphite-200 px-2 py-1 text-xs text-graphite-600 transition hover:border-graphite-300 disabled:opacity-30"
                                 >
                                   ↓
+                                </button>
+                                <button
+                                  type="button"
+                                  aria-pressed={struck.has(teamNumber)}
+                                  aria-label={`${struck.has(teamNumber) ? "Restore" : "Strike"} ${teamNumber}`}
+                                  onClick={() => handleStrike(teamNumber)}
+                                  className={`rounded border px-2 py-1 text-xs font-medium transition ${
+                                    struck.has(teamNumber)
+                                      ? "border-graphite-400 bg-graphite-100 text-graphite-700"
+                                      : "border-graphite-200 text-graphite-600 hover:border-graphite-300"
+                                  }`}
+                                  title={
+                                    struck.has(teamNumber)
+                                      ? "Team is struck — tap to restore"
+                                      : "Strike once this team is picked"
+                                  }
+                                >
+                                  Struck
                                 </button>
                                 <button
                                   type="button"

@@ -1,7 +1,7 @@
 "use client";
 
 import { useAuth } from "@/lib/auth/AuthProvider";
-import { syncMessage, useSyncState } from "@/lib/offlineSync";
+import { clearSyncFailures, syncMessage, useSyncState } from "@/lib/offlineSync";
 
 /**
  * Tells the scout what the device is holding: nothing while everything is
@@ -20,9 +20,21 @@ export function SyncStatus() {
     <p
       role="status"
       aria-live="polite"
-      className={`${tone} rounded-md px-3 py-2 text-sm normal-case tracking-normal`}
+      className={`${tone} flex items-start gap-2 rounded-md px-3 py-2 text-sm normal-case tracking-normal`}
     >
-      {message}
+      <span className="flex-1">{message}</span>
+      {/* A rejection count only ever grows, so without this the banner is
+          permanent — the scout acknowledges it and gets the ordinary offline
+          and syncing messages back. */}
+      {state.failed > 0 && (
+        <button
+          type="button"
+          onClick={() => clearSyncFailures()}
+          className="shrink-0 font-semibold underline underline-offset-2"
+        >
+          Dismiss
+        </button>
+      )}
     </p>
   );
 }

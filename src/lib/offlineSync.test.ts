@@ -52,9 +52,27 @@ describe("syncMessage", () => {
   });
 
   it("puts rejected writes ahead of the offline notice — waiting won't fix those", () => {
-    expect(
-      syncMessage(state({ online: false, pendingMatches: 3, failed: 1 })),
-    ).toBe("1 submission was rejected and won't sync — tell an admin.");
+    const message = syncMessage(
+      state({ online: false, pendingMatches: 3, failed: 1 }),
+    );
+    expect(message).toMatch(
+      /^1 submission was rejected and won't sync — tell an admin\./,
+    );
+  });
+
+  it("still reports the queue behind a rejection, which is sticky until dismissed", () => {
+    // Regression: returning early on failed > 0 meant a single rejection hid
+    // the offline state and queue count for the rest of the session.
+    const message = syncMessage(
+      state({ online: false, pendingMatches: 3, failed: 1 }),
+    );
+    expect(message).toMatch(/3 submissions saved on this device/);
+  });
+
+  it("still reports syncing behind a rejection once back online", () => {
+    expect(syncMessage(state({ pendingMatches: 2, failed: 1 }))).toMatch(
+      /Syncing 2 submissions/,
+    );
   });
 
   it("agrees the verb with the number of rejected writes", () => {

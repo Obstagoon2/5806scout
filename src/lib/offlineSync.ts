@@ -153,18 +153,30 @@ export function useSyncState(
  *  worth saying (online, everything acknowledged). */
 export function syncMessage(state: SyncState): string | null {
   const pending = state.pendingMatches + state.pendingPits;
+  // Rejections lead — waiting won't fix those, and they're the only part a
+  // scout has to act on. They no longer REPLACE the rest of the message
+  // though: a rejection is sticky until dismissed, so returning early here
+  // meant one bad write hid the offline state and the queue count for the
+  // rest of the day, exactly when a scout most needs to see them.
+  const parts: string[] = [];
+
   if (state.failed > 0) {
-    return state.failed === 1
-      ? "1 submission was rejected and won't sync — tell an admin."
-      : `${state.failed} submissions were rejected and won't sync — tell an admin.`;
+    parts.push(
+      state.failed === 1
+        ? "1 submission was rejected and won't sync — tell an admin."
+        : `${state.failed} submissions were rejected and won't sync — tell an admin.`,
+    );
   }
+
   if (!state.online) {
-    return pending > 0
-      ? `Offline — ${pending} submission${pending === 1 ? "" : "s"} saved on this device. They'll sync when you're back online.`
-      : "Offline — submissions save to this device and sync when you're back online.";
+    parts.push(
+      pending > 0
+        ? `Offline — ${pending} submission${pending === 1 ? "" : "s"} saved on this device. They'll sync when you're back online.`
+        : "Offline — submissions save to this device and sync when you're back online.",
+    );
+  } else if (pending > 0) {
+    parts.push(`Syncing ${pending} submission${pending === 1 ? "" : "s"}…`);
   }
-  if (pending > 0) {
-    return `Syncing ${pending} submission${pending === 1 ? "" : "s"}…`;
-  }
-  return null;
+
+  return parts.length > 0 ? parts.join(" ") : null;
 }
