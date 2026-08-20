@@ -126,6 +126,61 @@ export function nextUpcomingMatch(
   return matches.find(isUnplayed) ?? matches[matches.length - 1];
 }
 
+/**
+ * Every team with a match on the schedule, ascending.
+ *
+ * Read off the matches rather than the event's team list on purpose: a team
+ * the board can pick must have something to pick, and the two lists are synced
+ * separately — a roster entry with no matches yet would be a dead option.
+ */
+export function matchTeamNumbers(
+  matches: readonly EventMatch[],
+): number[] {
+  const teams = new Set<number>();
+  for (const match of matches) {
+    for (const teamNumber of [...match.red, ...match.blue]) {
+      teams.add(teamNumber);
+    }
+  }
+  return [...teams].sort((a, b) => a - b);
+}
+
+/** One team's matches, in schedule order, whichever alliance they are on. */
+export function teamMatches(
+  matches: readonly EventMatch[],
+  teamNumber: number,
+): EventMatch[] {
+  return matches.filter(
+    (match) =>
+      match.red.includes(teamNumber) || match.blue.includes(teamNumber),
+  );
+}
+
+/** The match a given team plays next — the same "next, else last" rule as
+ *  nextUpcomingMatch, narrowed to that team's own schedule. */
+export function nextTeamMatch(
+  matches: readonly EventMatch[],
+  teamNumber: number,
+): EventMatch | null {
+  return nextUpcomingMatch(teamMatches(matches, teamNumber));
+}
+
+/**
+ * The team the board opens on: the viewer's own, when they are playing this
+ * event. A team scouting an event they aren't entered in still gets a usable
+ * board rather than two empty dropdowns.
+ */
+export function defaultBoardTeam(
+  matches: readonly EventMatch[],
+  ownTeamNumber: number | null,
+): number | null {
+  const teams = matchTeamNumbers(matches);
+  if (ownTeamNumber !== null && teams.includes(ownTeamNumber)) {
+    return ownTeamNumber;
+  }
+  return teams[0] ?? null;
+}
+
 // --- Board state -----------------------------------------------------------
 
 export interface TokenPosition {

@@ -5,6 +5,7 @@ import {
   autoSelectionKey,
   BOARD_PHASES,
   clampToField,
+  defaultBoardTeam,
   defaultTokenPositions,
   emptyBoardState,
   forecastSplit,
@@ -12,7 +13,10 @@ import {
   isUnplayed,
   matchLabel,
   matchSlots,
+  matchTeamNumbers,
+  nextTeamMatch,
   nextUpcomingMatch,
+  teamMatches,
   parseBoardState,
   phaseTokens,
   phaseUsesAutos,
@@ -266,5 +270,81 @@ describe("forecastSplit", () => {
       bluePercent: null,
       favourite: null,
     });
+  });
+});
+
+/** A two-match schedule: 5806 plays both, on opposite alliances. */
+const SCHEDULE = [
+  match({ key: "qm1", matchNumber: 1, redScore: 50, blueScore: 40 }),
+  match({
+    key: "qm2",
+    matchNumber: 2,
+    red: [118, 2056, 971],
+    blue: [5806, 254, 1114],
+  }),
+  match({ key: "qm3", matchNumber: 3, red: [9, 8, 7], blue: [6, 5, 4] }),
+];
+
+describe("matchTeamNumbers", () => {
+  it("lists every team with a match, ascending and deduplicated", () => {
+    expect(matchTeamNumbers(SCHEDULE)).toEqual([
+      4, 5, 6, 7, 8, 9, 118, 254, 971, 1114, 2056, 5806,
+    ]);
+  });
+
+  it("has nobody to offer before a schedule is synced", () => {
+    expect(matchTeamNumbers([])).toEqual([]);
+  });
+});
+
+describe("teamMatches", () => {
+  it("finds a team on either alliance, in schedule order", () => {
+    expect(teamMatches(SCHEDULE, 5806).map((m) => m.key)).toEqual([
+      "qm1",
+      "qm2",
+    ]);
+  });
+
+  it("is empty for a team that isn't playing", () => {
+    expect(teamMatches(SCHEDULE, 9999)).toEqual([]);
+  });
+});
+
+describe("nextTeamMatch", () => {
+  it("picks the team's next unplayed match, not the event's", () => {
+    // qm1 is already played, so 5806's next is qm2 — even though qm3 is the
+    // event's later match and 5806 isn't in it.
+    expect(nextTeamMatch(SCHEDULE, 5806)?.key).toBe("qm2");
+  });
+
+  it("falls back to their last match once they are done for the day", () => {
+    const done = SCHEDULE.map((m) => ({
+      ...m,
+      redScore: 10,
+      blueScore: 20,
+    }));
+    expect(nextTeamMatch(done, 5806)?.key).toBe("qm2");
+  });
+
+  it("has nothing for a team that isn't playing", () => {
+    expect(nextTeamMatch(SCHEDULE, 9999)).toBeNull();
+  });
+});
+
+describe("defaultBoardTeam", () => {
+  it("opens on the viewer's own team", () => {
+    expect(defaultBoardTeam(SCHEDULE, 5806)).toBe(5806);
+  });
+
+  it("falls back to the first team when the viewer isn't entered", () => {
+    expect(defaultBoardTeam(SCHEDULE, 9999)).toBe(4);
+  });
+
+  it("falls back when the viewer's team number is unknown", () => {
+    expect(defaultBoardTeam(SCHEDULE, null)).toBe(4);
+  });
+
+  it("has nothing to open on with no schedule", () => {
+    expect(defaultBoardTeam([], 5806)).toBeNull();
   });
 });

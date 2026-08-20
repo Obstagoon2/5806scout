@@ -39,10 +39,13 @@ import {
   autoSelectionKey,
   BOARD_PHASES,
   DEFAULT_PHASE,
+  defaultBoardTeam,
   forecastSplit,
   matchLabel,
   matchSlots,
-  nextUpcomingMatch,
+  matchTeamNumbers,
+  nextTeamMatch,
+  teamMatches,
   parseBoardState,
   phaseTokens,
   phaseUsesAutos,
@@ -87,6 +90,10 @@ export default function StrategyPage() {
   const [submissions, setSubmissions] = useState<MatchSubmission[]>([]);
 
   const [event, setEvent] = useState<EventData | null>(null);
+  // Both nullable so "the viewer hasn't chosen" stays distinct from whatever
+  // the defaults resolve to — a schedule sync that adds matches should be able
+  // to move an untouched board forward, and must not move a chosen one.
+  const [teamChoice, setTeamChoice] = useState<number | null>(null);
   const [matchKey, setMatchKey] = useState<string | null>(null);
   const [phase, setPhase] = useState<PhaseId>(DEFAULT_PHASE);
   // Tagged with the match it came from, so a snapshot still in flight when the
@@ -148,15 +155,34 @@ export default function StrategyPage() {
 
   const matches = useMemo(() => event?.matches ?? [], [event]);
 
-  // Open on the next unplayed match, and stay there once an admin picks
-  // another — re-deriving on every schedule sync would drag them back.
+  // Open on the viewer's own team, and stay wherever an admin puts it — but
+  // fall back rather than blank out if a re-sync drops the chosen team.
+  const ownTeamNumber = profile ? Number(profile.teamId) : null;
+  const teamNumbers = useMemo(() => matchTeamNumbers(matches), [matches]);
+  const selectedTeam: number | null = useMemo(() => {
+    if (teamChoice !== null && teamNumbers.includes(teamChoice)) {
+      return teamChoice;
+    }
+    return defaultBoardTeam(
+      matches,
+      Number.isInteger(ownTeamNumber) ? ownTeamNumber : null,
+    );
+  }, [matches, ownTeamNumber, teamChoice, teamNumbers]);
+
+  // That team's own schedule, which is what the match dropdown offers.
+  const teamSchedule = useMemo(
+    () => (selectedTeam === null ? [] : teamMatches(matches, selectedTeam)),
+    [matches, selectedTeam],
+  );
+
+  // Their next match, until an admin picks a different one of theirs.
   const selectedMatch: EventMatch | null = useMemo(() => {
     if (matchKey) {
-      const chosen = matches.find((m) => m.key === matchKey);
+      const chosen = teamSchedule.find((m) => m.key === matchKey);
       if (chosen) return chosen;
     }
-    return nextUpcomingMatch(matches);
-  }, [matchKey, matches]);
+    return selectedTeam === null ? null : nextTeamMatch(matches, selectedTeam);
+  }, [matchKey, matches, selectedTeam, teamSchedule]);
 
   const slots: BoardSlot[] = useMemo(
     () => (selectedMatch ? matchSlots(selectedMatch) : []),
@@ -390,9 +416,18 @@ export default function StrategyPage() {
       ) : (
         <>
           <MatchPicker
-            matches={matches}
+            teamNumbers={teamNumbers}
+            selectedTeam={selectedTeam}
+            onSelectTeam={(teamNumber) => {
+              setTeamChoice(teamNumber);
+              // Clearing the match sends the board to the new team's NEXT
+              // match; keeping it would strand them on someone else's.
+              setMatchKey(null);
+              setPhase(DEFAULT_PHASE);
+            }}
+            teamSchedule={teamSchedule}
             selected={selectedMatch}
-            onSelect={(key) => {
+            onSelectMatch={(key) => {
               setMatchKey(key);
               setPhase(DEFAULT_PHASE);
             }}
@@ -473,33 +508,58 @@ function phaseLabel(phase: PhaseId): string {
   return BOARD_PHASES.find((p) => p.id === phase)?.label ?? phase;
 }
 
+/** Pick a team, then one of that team's matches. Opens on the viewer's own
+ *  team and the match they play next. */
 function MatchPicker({
-  matches,
+  teamNumbers,
+  selectedTeam,
+  onSelectTeam,
+  teamSchedule,
   selected,
-  onSelect,
+  onSelectMatch,
 }: {
-  matches: readonly EventMatch[];
+  teamNumbers: readonly number[];
+  selectedTeam: number | null;
+  onSelectTeam: (teamNumber: number) => void;
+  teamSchedule: readonly EventMatch[];
   selected: EventMatch | null;
-  onSelect: (key: string) => void;
+  onSelectMatch: (key: string) => void;
 }) {
   return (
-    // Full width: the option text carries both alliances' team numbers, and a
-    // narrow select truncates the blue three away.
-    <label className="flex w-full flex-col gap-1.5">
-      <span className="text-sm font-medium text-graphite-700">Match</span>
-      <select
-        value={selected?.key ?? ""}
-        onChange={(e) => onSelect(e.target.value)}
-        className="field-input"
-      >
-        {matches.map((match) => (
-          <option key={match.key} value={match.key}>
-            {matchLabel(match)} — {match.red.join(", ")} vs{" "}
-            {match.blue.join(", ")}
-          </option>
-        ))}
-      </select>
-    </label>
+    <div className="flex flex-col gap-3 sm:flex-row">
+      <label className="flex flex-col gap-1.5 sm:w-40">
+        <span className="text-sm font-medium text-graphite-700">Team</span>
+        <select
+          value={selectedTeam ?? ""}
+          onChange={(e) => onSelectTeam(Number(e.target.value))}
+          className="field-input stat"
+        >
+          {teamNumbers.map((teamNumber) => (
+            <option key={teamNumber} value={teamNumber}>
+              {teamNumber}
+            </option>
+          ))}
+        </select>
+      </label>
+
+      {/* Full width: the option text carries both alliances' team numbers,
+          and a narrow select truncates the blue three away. */}
+      <label className="flex flex-1 flex-col gap-1.5">
+        <span className="text-sm font-medium text-graphite-700">Match</span>
+        <select
+          value={selected?.key ?? ""}
+          onChange={(e) => onSelectMatch(e.target.value)}
+          className="field-input"
+        >
+          {teamSchedule.map((match) => (
+            <option key={match.key} value={match.key}>
+              {matchLabel(match)} — {match.red.join(", ")} vs{" "}
+              {match.blue.join(", ")}
+            </option>
+          ))}
+        </select>
+      </label>
+    </div>
   );
 }
 
