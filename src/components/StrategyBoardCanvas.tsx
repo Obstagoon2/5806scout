@@ -71,7 +71,25 @@ export function StrategyBoardCanvas({
 }: StrategyBoardCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const field = useFieldImage();
-  const drawing = useRef<SketchStroke | null>(null);
+  // The stroke under the finger, held here until it is finished.
+  //
+  // It cannot live in `strokes`: the board round-trips that prop through
+  // serialization on every change, so a stroke handed up mid-gesture comes
+  // back as a different object, and the points appended to the original land
+  // nowhere. Every drag used to leave a single dot. Emitting once, on
+  // pointer-up, also stops the whole board re-serializing per pointer move.
+  //
+  // Kept in both a ref and state: the ref is what the handlers read and write,
+  // because pointermove is a continuous event React may batch and a stale
+  // closure would silently drop points. The state exists only to trigger the
+  // repaint, so the line appears under the finger as it is drawn.
+  const liveRef = useRef<SketchStroke | null>(null);
+  const [liveStroke, setLiveStroke] = useState<SketchStroke | null>(null);
+
+  function setLive(stroke: SketchStroke | null) {
+    liveRef.current = stroke;
+    setLiveStroke(stroke);
+  }
 
   useEffect(() => {
     const ctx = canvasRef.current?.getContext("2d");
@@ -80,8 +98,8 @@ export function StrategyBoardCanvas({
     for (const overlay of overlays) {
       paintStrokes(ctx, overlay.strokes, { opacity: OVERLAY_OPACITY });
     }
-    paintStrokes(ctx, strokes);
-  }, [field, overlays, strokes]);
+    paintStrokes(ctx, liveStroke ? [...strokes, liveStroke] : strokes);
+  }, [field, liveStroke, overlays, strokes]);
 
   function handlePointerDown(event: React.PointerEvent<HTMLCanvasElement>) {
     const point = sketchPointFrom(event);
@@ -97,21 +115,22 @@ export function StrategyBoardCanvas({
     }
 
     event.currentTarget.setPointerCapture(event.pointerId);
-    const stroke: SketchStroke = { color, width: PEN_WIDTH, points: [point] };
-    drawing.current = stroke;
-    onStrokesChange([...strokes, stroke]);
+    setLive({ color, width: PEN_WIDTH, points: [point] });
   }
 
   function handlePointerMove(event: React.PointerEvent<HTMLCanvasElement>) {
-    const stroke = drawing.current;
-    if (!stroke) return;
-    stroke.points.push(sketchPointFrom(event));
-    onStrokesChange([...strokes]);
+    const current = liveRef.current;
+    if (!current) return;
+    const point = sketchPointFrom(event);
+    setLive({ ...current, points: [...current.points, point] });
   }
 
   function handlePointerUp() {
-    if (!drawing.current) return;
-    drawing.current = null;
+    const finished = liveRef.current;
+    if (!finished) return;
+    setLive(null);
+    // A tap with no drag is a dot, and worth keeping — it marks a spot.
+    onStrokesChange([...strokes, finished]);
     onCommit();
   }
 

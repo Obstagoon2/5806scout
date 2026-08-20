@@ -1,9 +1,15 @@
 import { describe, expect, it } from "vitest";
 import {
+  allianceOfPoint,
   parseStrokes,
   recolorStrokes,
+  rotateStrokes,
   serializeStrokes,
+  SKETCH_HEIGHT,
+  SKETCH_WIDTH,
+  sketchAlliance,
   strokeIndexAt,
+  strokesForAlliance,
   type SketchStroke,
 } from "./fieldSketch";
 
@@ -123,5 +129,108 @@ describe("strokeIndexAt", () => {
 
   it("has nothing to find on an empty board", () => {
     expect(strokeIndexAt([], { x: 10, y: 10 })).toBe(-1);
+  });
+});
+
+/** A path starting at the red (left) wall and running toward centre. */
+const RED_PATH: SketchStroke[] = [
+  {
+    color: "#9f1239",
+    width: 5,
+    points: [
+      { x: 60, y: 120 },
+      { x: 300, y: 200 },
+    ],
+  },
+];
+
+describe("allianceOfPoint", () => {
+  it("splits the field down the middle, red on the left", () => {
+    expect(allianceOfPoint({ x: 10, y: 10 })).toBe("red");
+    expect(allianceOfPoint({ x: SKETCH_WIDTH - 10, y: 10 })).toBe("blue");
+  });
+
+  it("puts the centre line itself on the blue side, consistently", () => {
+    expect(allianceOfPoint({ x: SKETCH_WIDTH / 2, y: 10 })).toBe("blue");
+  });
+});
+
+describe("sketchAlliance", () => {
+  it("reads the side off where the path starts, not where it ends", () => {
+    // Starts at the red wall, finishes past the centre line.
+    expect(
+      sketchAlliance([
+        {
+          color: "#9f1239",
+          width: 5,
+          points: [
+            { x: 40, y: 100 },
+            { x: 900, y: 100 },
+          ],
+        },
+      ]),
+    ).toBe("red");
+  });
+
+  it("has no opinion about an empty sketch", () => {
+    expect(sketchAlliance([])).toBeNull();
+  });
+
+  it("skips leading strokes that have no points", () => {
+    expect(
+      sketchAlliance([{ color: "#1f2937", width: 5, points: [] }, ...RED_PATH]),
+    ).toBe("red");
+  });
+});
+
+describe("rotateStrokes", () => {
+  it("turns the path a half circle about the centre of the field", () => {
+    expect(rotateStrokes(RED_PATH)[0].points).toEqual([
+      { x: SKETCH_WIDTH - 60, y: SKETCH_HEIGHT - 120 },
+      { x: SKETCH_WIDTH - 300, y: SKETCH_HEIGHT - 200 },
+    ]);
+  });
+
+  it("is its own inverse", () => {
+    expect(rotateStrokes(rotateStrokes(RED_PATH))).toEqual(RED_PATH);
+  });
+
+  it("keeps the pen it was drawn with", () => {
+    expect(rotateStrokes(RED_PATH)[0].color).toBe(RED_PATH[0].color);
+  });
+
+  it("leaves the originals alone", () => {
+    rotateStrokes(RED_PATH);
+    expect(RED_PATH[0].points[0]).toEqual({ x: 60, y: 120 });
+  });
+});
+
+describe("strokesForAlliance", () => {
+  it("leaves a red-drawn path alone on the red alliance", () => {
+    expect(strokesForAlliance(RED_PATH, "red")).toEqual(RED_PATH);
+  });
+
+  it("rotates a red-drawn path onto the blue alliance", () => {
+    expect(strokesForAlliance(RED_PATH, "blue")).toEqual(
+      rotateStrokes(RED_PATH),
+    );
+  });
+
+  it("rotates a blue-drawn path onto the red alliance", () => {
+    const bluePath = rotateStrokes(RED_PATH);
+    expect(strokesForAlliance(bluePath, "red")).toEqual(RED_PATH);
+  });
+
+  it("makes nothing up out of an empty sketch", () => {
+    expect(strokesForAlliance([], "blue")).toEqual([]);
+  });
+
+  it("lands every point inside the field", () => {
+    for (const point of strokesForAlliance(RED_PATH, "blue")[0].points) {
+      expect(point.x).toBeGreaterThanOrEqual(0);
+      expect(point.x).toBeLessThanOrEqual(SKETCH_WIDTH);
+      expect(point.y).toBeGreaterThanOrEqual(0);
+      expect(point.y).toBeLessThanOrEqual(SKETCH_HEIGHT);
+    }
   });
 });

@@ -142,14 +142,22 @@ describe("StrategyBoardCanvas eraser", () => {
     } as DOMRect);
   }
 
-  function pointerDownAt(canvas: HTMLElement, point: SketchPoint) {
+  function pointerAt(
+    canvas: HTMLElement,
+    type: "pointerdown" | "pointermove" | "pointerup",
+    point: SketchPoint,
+  ) {
     canvas.dispatchEvent(
-      new PointerEvent("pointerdown", {
+      new PointerEvent(type, {
         bubbles: true,
         clientX: point.x,
         clientY: point.y,
       }),
     );
+  }
+
+  function pointerDownAt(canvas: HTMLElement, point: SketchPoint) {
+    pointerAt(canvas, "pointerdown", point);
   }
 
   it("removes the stroke under the pointer", () => {
@@ -174,7 +182,7 @@ describe("StrategyBoardCanvas eraser", () => {
     expect(props.onCommit).not.toHaveBeenCalled();
   });
 
-  it("starts a new stroke with the pen instead of erasing", () => {
+  it("draws with the pen instead of erasing what is under the pointer", () => {
     const props = setup({ strokes: [LINE], tool: "pen", color: "#0369a1" });
     const canvas = screen.getByLabelText("Strategy board field");
     stubCanvasRect(canvas);
@@ -182,9 +190,110 @@ describe("StrategyBoardCanvas eraser", () => {
     canvas.setPointerCapture = vi.fn();
 
     pointerDownAt(canvas, { x: 100, y: 100 });
+    pointerAt(canvas, "pointerup", { x: 100, y: 100 });
 
     const emitted = props.onStrokesChange.mock.calls[0][0] as SketchStroke[];
     expect(emitted).toHaveLength(2);
     expect(emitted[1].color).toBe("#0369a1");
+  });
+});
+
+describe("StrategyBoardCanvas drawing", () => {
+  function stubbedCanvas() {
+    const canvas = screen.getByLabelText("Strategy board field");
+    vi.spyOn(canvas, "getBoundingClientRect").mockReturnValue({
+      left: 0,
+      top: 0,
+      width: SKETCH_WIDTH,
+      height: 504,
+      right: SKETCH_WIDTH,
+      bottom: 504,
+      x: 0,
+      y: 0,
+      toJSON: () => ({}),
+    } as DOMRect);
+    canvas.setPointerCapture = vi.fn();
+    return canvas;
+  }
+
+  function drag(canvas: HTMLElement, points: SketchPoint[]) {
+    const fire = (type: string, p: SketchPoint) =>
+      canvas.dispatchEvent(
+        new PointerEvent(type, { bubbles: true, clientX: p.x, clientY: p.y }),
+      );
+    fire("pointerdown", points[0]);
+    for (const point of points.slice(1)) fire("pointermove", point);
+    fire("pointerup", points[points.length - 1]);
+  }
+
+  /**
+   * The regression this file exists for: the board round-trips `strokes`
+   * through serialization, so a stroke handed up mid-drag comes back as a
+   * different object. Appending to the original then landed nowhere and every
+   * drag left a single dot.
+   */
+  it("keeps every point of a drag, not just where it started", () => {
+    const props = setup();
+    const canvas = stubbedCanvas();
+
+    drag(canvas, [
+      { x: 10, y: 10 },
+      { x: 50, y: 40 },
+      { x: 90, y: 80 },
+    ]);
+
+    expect(props.onStrokesChange).toHaveBeenCalledTimes(1);
+    const emitted = props.onStrokesChange.mock.calls[0][0] as SketchStroke[];
+    expect(emitted).toHaveLength(1);
+    expect(emitted[0].points).toEqual([
+      { x: 10, y: 10 },
+      { x: 50, y: 40 },
+      { x: 90, y: 80 },
+    ]);
+  });
+
+  it("appends to what was already on the board", () => {
+    const props = setup({ strokes: [LINE] });
+    drag(stubbedCanvas(), [
+      { x: 10, y: 10 },
+      { x: 20, y: 20 },
+    ]);
+
+    const emitted = props.onStrokesChange.mock.calls[0][0] as SketchStroke[];
+    expect(emitted).toHaveLength(2);
+    expect(emitted[0]).toEqual(LINE);
+  });
+
+  it("saves once per finished stroke, not per pointer move", () => {
+    const props = setup();
+    drag(stubbedCanvas(), [
+      { x: 10, y: 10 },
+      { x: 20, y: 20 },
+      { x: 30, y: 30 },
+    ]);
+
+    expect(props.onCommit).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps a tap with no drag, which marks a spot", () => {
+    const props = setup();
+    const canvas = stubbedCanvas();
+    canvas.dispatchEvent(
+      new PointerEvent("pointerdown", { bubbles: true, clientX: 5, clientY: 5 }),
+    );
+    canvas.dispatchEvent(
+      new PointerEvent("pointerup", { bubbles: true, clientX: 5, clientY: 5 }),
+    );
+
+    const emitted = props.onStrokesChange.mock.calls[0][0] as SketchStroke[];
+    expect(emitted[0].points).toEqual([{ x: 5, y: 5 }]);
+  });
+
+  it("emits nothing when a move arrives with no stroke in progress", () => {
+    const props = setup();
+    stubbedCanvas().dispatchEvent(
+      new PointerEvent("pointermove", { bubbles: true, clientX: 5, clientY: 5 }),
+    );
+    expect(props.onStrokesChange).not.toHaveBeenCalled();
   });
 });

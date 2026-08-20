@@ -263,3 +263,61 @@ export function strokeIndexAt(
   }
   return -1;
 }
+
+// --- Alliance geometry -----------------------------------------------------
+//
+// A pit scout draws a robot's auto once, from wherever that robot was standing
+// when they saw it. The same robot turns up on the other alliance two matches
+// later, and the path has to move with it.
+//
+// The REBUILT field is rotationally symmetric, not mirrored — its depots sit
+// diagonally opposite rather than left-right across. So the far alliance's
+// equivalent of a point is the field rotated a half turn about its centre,
+// NOT flipped about the centre line. Mirroring instead would put a path on the
+// correct side of the field but the wrong side of it lengthwise.
+
+/** Which half of the field a point is in. Red is the left end — see the map. */
+export function allianceOfPoint(point: SketchPoint): "red" | "blue" {
+  return point.x < SKETCH_WIDTH / 2 ? "red" : "blue";
+}
+
+/**
+ * Which alliance a sketch was drawn for, or null when there is nothing to go
+ * on. Read off the first point of the first stroke, because an auto starts at
+ * its own alliance wall — the rest of the path may well cross the field, so
+ * the shape as a whole is a much worse witness than where it begins.
+ */
+export function sketchAlliance(
+  strokes: readonly SketchStroke[],
+): "red" | "blue" | null {
+  const first = strokes.find((stroke) => stroke.points.length > 0);
+  return first ? allianceOfPoint(first.points[0]) : null;
+}
+
+/** The same path as the other alliance would run it: a half turn about the
+ *  centre of the field. Applying it twice returns the original. */
+export function rotateStrokes(
+  strokes: readonly SketchStroke[],
+): SketchStroke[] {
+  return strokes.map((stroke) => ({
+    ...stroke,
+    points: stroke.points.map((p) => ({
+      x: SKETCH_WIDTH - p.x,
+      y: SKETCH_HEIGHT - p.y,
+    })),
+  }));
+}
+
+/**
+ * A scouted auto placed on the alliance the robot is actually on this match.
+ * Left alone when it was already drawn on that side, and when the sketch is
+ * empty — rotating nothing produces nothing, but guessing produces a lie.
+ */
+export function strokesForAlliance(
+  strokes: readonly SketchStroke[],
+  alliance: "red" | "blue",
+): SketchStroke[] {
+  const drawnFor = sketchAlliance(strokes);
+  if (drawnFor === null || drawnFor === alliance) return [...strokes];
+  return rotateStrokes(strokes);
+}

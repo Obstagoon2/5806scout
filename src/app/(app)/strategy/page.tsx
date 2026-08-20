@@ -15,6 +15,8 @@ import {
   PEN_COLORS,
   recolorStrokes,
   serializeStrokes,
+  sketchAlliance,
+  strokesForAlliance,
   type SketchStroke,
 } from "@/lib/fieldSketch";
 import {
@@ -192,8 +194,10 @@ export default function StrategyPage() {
     [phaseState, selectedMatch],
   );
 
-  // Every ticked auto, recolored to its own alliance so three paths over one
-  // field still say who is who.
+  // Every ticked auto, moved onto the alliance the robot is actually on this
+  // match and recolored to match, so three paths over one field still say who
+  // is who. A robot scouted on red and drawn there plays the same auto from
+  // the other end two matches later — see strokesForAlliance.
   const overlays: BoardOverlay[] = useMemo(() => {
     if (!phaseUsesAutos(phase)) return [];
     const result: BoardOverlay[] = [];
@@ -203,7 +207,10 @@ export default function StrategyPage() {
         if (!board.selectedAutos.includes(key)) continue;
         result.push({
           key,
-          strokes: recolorStrokes(auto.strokes, ALLIANCE_COLORS[slot.alliance]),
+          strokes: recolorStrokes(
+            strokesForAlliance(auto.strokes, slot.alliance),
+            ALLIANCE_COLORS[slot.alliance],
+          ),
         });
       }
     }
@@ -595,10 +602,17 @@ function AutoPicker({
                       <span className="block font-medium text-graphite-900">
                         {autoDisplayName(auto, index)}
                       </span>
-                      {auto.strokes.length === 0 && (
+                      {auto.strokes.length === 0 ? (
                         <span className="block text-xs italic text-graphite-400">
                           No path drawn — nothing to show on the field.
                         </span>
+                      ) : (
+                        sketchAlliance(auto.strokes) !== slot.alliance && (
+                          <span className="block text-xs italic text-graphite-500">
+                            Scouted on {sketchAlliance(auto.strokes)} — turned
+                            around for this match.
+                          </span>
+                        )
                       )}
                     </span>
                   </label>
