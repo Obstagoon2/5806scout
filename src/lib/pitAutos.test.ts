@@ -20,7 +20,6 @@ function auto(overrides: Partial<PitAutoWithPath> = {}): PitAutoWithPath {
   return {
     id: "a1",
     name: "3-piece left",
-    notes: "Starts on the wall",
     strokes: [],
     ...overrides,
   };
@@ -28,8 +27,14 @@ function auto(overrides: Partial<PitAutoWithPath> = {}): PitAutoWithPath {
 
 describe("parseAutos", () => {
   it("reads a well-formed list", () => {
-    expect(parseAutos([{ id: "a1", name: "Taxi", notes: "n" }])).toEqual([
-      { id: "a1", name: "Taxi", notes: "n" },
+    expect(parseAutos([{ id: "a1", name: "Taxi" }])).toEqual([
+      { id: "a1", name: "Taxi" },
+    ]);
+  });
+
+  it("drops a name-and-map auto's leftover notes from an older document", () => {
+    expect(parseAutos([{ id: "a1", name: "Taxi", notes: "gone" }])).toEqual([
+      { id: "a1", name: "Taxi" },
     ]);
   });
 
@@ -42,12 +47,12 @@ describe("parseAutos", () => {
   it("skips entries with no usable id rather than inventing one", () => {
     expect(
       parseAutos([{ name: "no id" }, { id: "" }, null, { id: "a2" }]),
-    ).toEqual([{ id: "a2", name: "", notes: "" }]);
+    ).toEqual([{ id: "a2", name: "" }]);
   });
 
-  it("defaults missing text to empty strings", () => {
-    expect(parseAutos([{ id: "a1", name: 7, notes: null }])).toEqual([
-      { id: "a1", name: "", notes: "" },
+  it("defaults a missing name to an empty string", () => {
+    expect(parseAutos([{ id: "a1", name: 7 }])).toEqual([
+      { id: "a1", name: "" },
     ]);
   });
 
@@ -55,7 +60,6 @@ describe("parseAutos", () => {
     const many = Array.from({ length: MAX_AUTOS_PER_ROBOT + 5 }, (_, i) => ({
       id: `a${i}`,
       name: "",
-      notes: "",
     }));
     expect(parseAutos(many)).toHaveLength(MAX_AUTOS_PER_ROBOT);
   });
@@ -75,7 +79,7 @@ describe("parseAutoPaths", () => {
 });
 
 describe("withPaths / splitAutos", () => {
-  it("round-trips names, notes and paths across the two documents", () => {
+  it("round-trips names and paths across the two documents", () => {
     const autos = [auto({ strokes: PATH }), auto({ id: "a2", name: "Taxi" })];
     const { core, paths } = splitAutos(autos);
     expect(withPaths(core, paths)).toEqual(autos);
@@ -87,9 +91,7 @@ describe("withPaths / splitAutos", () => {
   });
 
   it("gives an auto with no saved path an empty stroke list", () => {
-    expect(withPaths([{ id: "a1", name: "", notes: "" }], {})[0].strokes).toEqual(
-      [],
-    );
+    expect(withPaths([{ id: "a1", name: "" }], {})[0].strokes).toEqual([]);
   });
 });
 
@@ -112,17 +114,15 @@ describe("removedAutoIds", () => {
 
 describe("isBlankAuto", () => {
   it("calls a row the scout never filled in blank", () => {
-    expect(isBlankAuto(auto({ name: "  ", notes: "" }))).toBe(true);
+    expect(isBlankAuto(auto({ name: "  " }))).toBe(true);
   });
 
   it("keeps an auto that has only a drawn path", () => {
-    expect(isBlankAuto(auto({ name: "", notes: "", strokes: PATH }))).toBe(
-      false,
-    );
+    expect(isBlankAuto(auto({ name: "", strokes: PATH }))).toBe(false);
   });
 
-  it("keeps an auto that has only notes", () => {
-    expect(isBlankAuto(auto({ name: "", notes: "Scores two" }))).toBe(false);
+  it("keeps an auto that has only a name", () => {
+    expect(isBlankAuto(auto({ name: "Taxi" }))).toBe(false);
   });
 });
 

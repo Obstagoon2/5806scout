@@ -8,11 +8,27 @@ interface SchemaFormProps {
   sections: readonly FormSection[];
   values: FormValues;
   onChange: (id: string, value: FormValues[string]) => void;
+  /**
+   * Extra content rendered inside a section, after its questions, keyed by
+   * section title. For answers a flat one-value-per-field schema can't hold —
+   * the pit form's list of auto routines is the only one so far.
+   *
+   * Titles are already the join key between a section and the questions an
+   * admin adds to it (see customForms.ts), so they are the key here too. A
+   * section an admin has deleted takes its slot with it, which is the same
+   * thing that happens to its questions.
+   */
+  sectionSlots?: Record<string, React.ReactNode>;
 }
 
 // Renders any FormSection[] config as a mobile-first form. Tap targets are
 // kept large (min 44px) — scouts use this on phones, often in a hurry.
-export function SchemaForm({ sections, values, onChange }: SchemaFormProps) {
+export function SchemaForm({
+  sections,
+  values,
+  onChange,
+  sectionSlots,
+}: SchemaFormProps) {
   return (
     <div className="flex flex-col gap-8">
       {sections.map((section) => (
@@ -34,6 +50,7 @@ export function SchemaForm({ sections, values, onChange }: SchemaFormProps) {
               onChange={(value) => onChange(field.id, value)}
             />
           ))}
+          {sectionSlots?.[section.title]}
         </fieldset>
       ))}
     </div>

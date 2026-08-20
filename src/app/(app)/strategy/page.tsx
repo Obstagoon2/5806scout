@@ -56,6 +56,12 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 //
 // Five phases per match, each its own field. Only Auto pulls in scouted auto
 // paths — the rest are plans, with nothing recorded to lay underneath.
+//
+// Two stores, on purpose. What was OBSERVED — the schedule, the pit-scouted
+// autos — is read from dataTeamId, the canonical store a linked sister pair
+// shares. The board itself is written to the team's own id, so a pair pools
+// its scouting but never sees the plan the other side drew from it. Same
+// carve-out the picklist makes, for the same reason.
 
 export default function StrategyPage() {
   const { dataTeamId, profile, user } = useAuth();
@@ -111,13 +117,16 @@ export default function StrategyPage() {
     [selectedMatch],
   );
 
-  // Board document: live, so two strategists at one event see one plan.
+  // Board document: live, so two strategists on THIS team see one plan. Keyed
+  // by the team's own id, never dataTeamId — see the note at the top.
+  const boardTeamId = profile?.teamId ?? null;
+
   useEffect(() => {
-    if (!dataTeamId || !selectedMatch) return;
+    if (!boardTeamId || !selectedMatch) return;
     revision.current = "";
     const key = selectedMatch.key;
     return onSnapshot(
-      doc(db, "teams", dataTeamId, "strategyBoards", key),
+      doc(db, "teams", boardTeamId, "strategyBoards", key),
       (snapshot) => {
         const data = snapshot.data();
         // Our own echo. Anything else is a teammate's edit and wins, because
@@ -127,7 +136,7 @@ export default function StrategyPage() {
       },
       () => setError("Couldn't load this match's board."),
     );
-  }, [dataTeamId, selectedMatch]);
+  }, [boardTeamId, selectedMatch]);
 
   // A board that hasn't loaded (or belongs to the match we just left) renders
   // as an empty field rather than as the previous match's plan.
@@ -203,14 +212,14 @@ export default function StrategyPage() {
 
   const save = useCallback(
     (next: BoardState) => {
-      if (!dataTeamId || !selectedMatch || !profile || !user) return;
+      if (!boardTeamId || !selectedMatch || !profile || !user) return;
       // Random rather than a timestamp: two admins saving in the same
       // millisecond would otherwise each mistake the other's write for their
       // own echo and never see it.
       const stamp = crypto.randomUUID();
       revision.current = stamp;
       void setDoc(
-        doc(db, "teams", dataTeamId, "strategyBoards", selectedMatch.key),
+        doc(db, "teams", boardTeamId, "strategyBoards", selectedMatch.key),
         {
           matchKey: selectedMatch.key,
           phases: next.phases,
@@ -227,7 +236,7 @@ export default function StrategyPage() {
         ),
       );
     },
-    [dataTeamId, profile, selectedMatch, user],
+    [boardTeamId, profile, selectedMatch, user],
   );
 
   function writeBoard(next: BoardState) {
@@ -586,11 +595,6 @@ function AutoPicker({
                       <span className="block font-medium text-graphite-900">
                         {autoDisplayName(auto, index)}
                       </span>
-                      {auto.notes && (
-                        <span className="block text-xs text-graphite-500">
-                          {auto.notes}
-                        </span>
-                      )}
                       {auto.strokes.length === 0 && (
                         <span className="block text-xs italic text-graphite-400">
                           No path drawn — nothing to show on the field.

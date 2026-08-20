@@ -147,8 +147,11 @@ service cloud.firestore {
       }
 
       // A verified sister team shares the canonical store's scouting data —
-      // but never the picklist: each team ranks (and DNPs) alone, so
-      // config/picklist stays same-team-only (the wildcard above).
+      // but never what a team works out for itself. The picklist is one:
+      // each team ranks (and DNPs) alone, so config/picklist stays
+      // same-team-only (the wildcard above). Strategy Boards are the other,
+      // and get no match block here at all for the same reason — a pair
+      // shares what it observed, not the plan each side drew from it.
       match /config/{docId} {
         allow read, create, update: if docId != "picklist" && isLinkedSisterTeam(teamId);
         allow delete: if docId != "picklist" && isSisterAdmin(teamId);
@@ -168,15 +171,6 @@ service cloud.firestore {
         allow delete: if isSisterAdmin(teamId);
       }
       match /matchScouting/{docId} {
-        allow read, create, update: if isLinkedSisterTeam(teamId);
-        allow delete: if isSisterAdmin(teamId);
-      }
-      // Strategy Board plans, one document per match (src/lib/strategyBoard.ts).
-      // A linked pair plays out of one canonical store, so the OTHER team's
-      // members write here through this rule — without it, the linked team's
-      // own board saves would be denied. Same-team access is inherited from
-      // the recursive rule above, exactly as it is for every other collection.
-      match /strategyBoards/{docId} {
         allow read, create, update: if isLinkedSisterTeam(teamId);
         allow delete: if isSisterAdmin(teamId);
       }

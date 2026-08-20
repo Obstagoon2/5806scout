@@ -10,7 +10,7 @@
 // Storage mirrors the split the rest of the pit form already makes (see
 // src/lib/formMedia.ts):
 //
-//   pitScouting/{team}.autos            — [{ id, name, notes }], light enough
+//   pitScouting/{team}.autos            — [{ id, name }], light enough
 //                                          that the collection listener on the
 //                                          Pit Scout page still costs nothing.
 //   pitScoutingMedia/{team}.autoPaths   — { [autoId]: "<serialized strokes>" },
@@ -31,8 +31,6 @@ export interface PitAuto {
   id: string;
   /** What the team calls it: "3-piece left", "far side taxi". */
   name: string;
-  /** What it actually does, in the scout's words. */
-  notes: string;
 }
 
 /** One auto with its path attached, which is how the UI works with them. */
@@ -74,7 +72,6 @@ export function parseAutos(raw: unknown): PitAuto[] {
     autos.push({
       id,
       name: typeof record.name === "string" ? record.name : "",
-      notes: typeof record.notes === "string" ? record.notes : "",
     });
     if (autos.length >= MAX_AUTOS_PER_ROBOT) break;
   }
@@ -110,7 +107,7 @@ export function splitAutos(autos: readonly PitAutoWithPath[]): {
   const core: PitAuto[] = [];
   const paths: AutoPathMap = {};
   for (const auto of autos) {
-    core.push({ id: auto.id, name: auto.name, notes: auto.notes });
+    core.push({ id: auto.id, name: auto.name });
     // Every auto gets a key, empty included: a path the scout erased has to
     // overwrite the saved one, and an absent key merges the old one back.
     paths[auto.id] = serializeStrokes(auto.strokes);
@@ -119,16 +116,12 @@ export function splitAutos(autos: readonly PitAutoWithPath[]): {
 }
 
 /**
- * Whether a routine is worth saving at all. An auto with no name, no notes and
- * no path is a row the scout added and never filled in; keeping it would put
- * an empty checkbox on the Strategy Board.
+ * Whether a routine is worth saving at all. An auto with no name and no path
+ * is a row the scout added and never filled in; keeping it would put an empty
+ * checkbox on the Strategy Board.
  */
 export function isBlankAuto(auto: PitAutoWithPath): boolean {
-  return (
-    auto.name.trim() === "" &&
-    auto.notes.trim() === "" &&
-    auto.strokes.length === 0
-  );
+  return auto.name.trim() === "" && auto.strokes.length === 0;
 }
 
 /**

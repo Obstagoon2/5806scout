@@ -21,7 +21,7 @@ import {
   withPaths,
   type PitAutoWithPath,
 } from "@/lib/pitAutos";
-import { PIT_MEDIA_COLLECTION } from "@/lib/pitScoutSchema";
+import { AUTO_SECTION_TITLE, PIT_MEDIA_COLLECTION } from "@/lib/pitScoutSchema";
 import { submitLocally } from "@/lib/offlineSync";
 import { SyncStatus } from "@/components/SyncStatus";
 import { useScoutForms } from "@/lib/useScoutForms";
@@ -313,13 +313,16 @@ export default function PitScoutPage() {
               setValues((prev) => ({ ...prev, [id]: value }));
               if (status.state !== "idle") setStatus({ state: "idle" });
             }}
-          />
-
-          <PitAutos
-            autos={autos}
-            onChange={(next) => {
-              setAutos(next);
-              if (status.state !== "idle") setStatus({ state: "idle" });
+            sectionSlots={{
+              [AUTO_SECTION_TITLE]: (
+                <PitAutos
+                  autos={autos}
+                  onChange={(next) => {
+                    setAutos(next);
+                    if (status.state !== "idle") setStatus({ state: "idle" });
+                  }}
+                />
+              ),
             }}
           />
 

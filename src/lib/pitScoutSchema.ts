@@ -7,6 +7,10 @@ import type { FormSection } from "@/lib/formSchema";
  *  src/lib/formMedia.ts for why they don't live in the submission doc. */
 export const PIT_MEDIA_COLLECTION = "pitScoutingMedia";
 
+/** The section the per-auto editor renders inside — see PitAutos. Named here
+ *  so the join isn't a string literal typed out in two files. */
+export const AUTO_SECTION_TITLE = "Autonomous";
+
 const YES_NO = ["Yes", "No"] as const;
 
 const SPEED_RANKS = [
@@ -40,19 +44,16 @@ export const PIT_SCOUT_SECTIONS: readonly FormSection[] = [
     ],
   },
   {
-    title: "Autonomous",
+    // The per-auto list (name + path, one card per routine) renders under this
+    // section's questions. There is deliberately no single "auto path map"
+    // field any more — a robot runs several autos, and each carries its own.
+    title: AUTO_SECTION_TITLE,
     fields: [
       {
         kind: "textarea",
         id: "autoRoutines",
-        label: "Auto capabilities / routines",
-        placeholder: "What can they do in auto? Starting positions, scoring, mobility…",
-      },
-      {
-        kind: "drawing",
-        id: "autoPathMap",
-        label: "Auto path map",
-        hint: "Sketch their starting spot and the path they run. Red zone is left, blue is right.",
+        label: "Auto notes",
+        placeholder: "Anything about their auto that isn't one specific routine…",
       },
     ],
   },

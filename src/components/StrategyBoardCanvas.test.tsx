@@ -31,21 +31,28 @@ const LINE: SketchStroke = {
   ],
 };
 
-function setup(overrides: Partial<React.ComponentProps<typeof StrategyBoardCanvas>> = {}) {
-  const props = {
+type BoardProps = React.ComponentProps<typeof StrategyBoardCanvas>;
+
+function setup(overrides: Partial<BoardProps> = {}) {
+  // Held separately from the props object so they keep their Mock type after
+  // the spread — `.mock.calls` is how several of these assert.
+  const onStrokesChange = vi.fn();
+  const onCommit = vi.fn();
+  const onTokenMove = vi.fn();
+  const props: BoardProps = {
     strokes: [] as SketchStroke[],
-    onStrokesChange: vi.fn(),
-    onCommit: vi.fn(),
+    onStrokesChange,
+    onCommit,
     tokens: TOKENS,
-    onTokenMove: vi.fn(),
+    onTokenMove,
     slots: SLOTS,
     overlays: [],
-    tool: "pen" as const,
+    tool: "pen",
     color: "#9f1239",
     ...overrides,
   };
   render(<StrategyBoardCanvas {...props} />);
-  return props;
+  return { onStrokesChange, onCommit, onTokenMove };
 }
 
 describe("StrategyBoardCanvas", () => {

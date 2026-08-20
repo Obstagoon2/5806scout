@@ -29,7 +29,6 @@ const POOLED = [
   "pitScoutingMedia",
   "matchScouting",
   "talkie",
-  "strategyBoards",
 ] as const;
 
 let testEnv: RulesTestEnvironment;
@@ -84,6 +83,8 @@ beforeEach(async () => {
     }
     await setDoc(doc(db, "teams/teamA/config/scoutDuties"), { seeded: true });
     await setDoc(doc(db, "teams/teamA/config/picklist"), { seeded: true });
+    // Not pooled: a pair shares what it observed, not the plan each side drew.
+    await setDoc(doc(db, "teams/teamA/strategyBoards/qm1"), { seeded: true });
     // Talkie requests carry a poster, who may withdraw their own.
     await setDoc(doc(db, "teams/teamA/talkie/byErin"), { createdByUid: "erin" });
     await setDoc(doc(db, "teams/teamA/talkie/byBob"), { createdByUid: "bob" });
@@ -111,6 +112,40 @@ describe("a linked sister team", () => {
 
   it("never reads teamA's picklist — each team ranks alone", async () => {
     await assertFails(getDoc(doc(as("bob"), "teams/teamA/config/picklist")));
+  });
+
+  it("never reads teamA's strategy boards — each team plans alone", async () => {
+    await assertFails(getDoc(doc(as("bob"), "teams/teamA/strategyBoards/qm1")));
+  });
+
+  it("never writes a strategy board into teamA", async () => {
+    await assertFails(
+      setDoc(doc(as("bob"), "teams/teamA/strategyBoards/qm2"), { x: 1 }),
+    );
+  });
+
+  it("is not let in by being the sister team's admin either", async () => {
+    await assertFails(getDoc(doc(as("bea"), "teams/teamA/strategyBoards/qm1")));
+    await assertFails(
+      deleteDoc(doc(as("bea"), "teams/teamA/strategyBoards/qm1")),
+    );
+  });
+});
+
+describe("a team's own strategy boards", () => {
+  it("are read and written by its own members", async () => {
+    await assertSucceeds(
+      getDoc(doc(as("erin"), "teams/teamA/strategyBoards/qm1")),
+    );
+    await assertSucceeds(
+      setDoc(doc(as("erin"), "teams/teamA/strategyBoards/qm3"), { x: 1 }),
+    );
+  });
+
+  it("are not reachable by an unlinked team", async () => {
+    await assertFails(
+      getDoc(doc(as("carol"), "teams/teamA/strategyBoards/qm1")),
+    );
   });
 });
 
