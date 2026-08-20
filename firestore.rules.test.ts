@@ -29,6 +29,7 @@ const POOLED = [
   "pitScoutingMedia",
   "matchScouting",
   "talkie",
+  "strategyBoards",
 ] as const;
 
 let testEnv: RulesTestEnvironment;

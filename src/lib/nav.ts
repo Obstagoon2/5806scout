@@ -22,6 +22,9 @@ export const NAV_ITEMS: NavItem[] = [
   { href: "/pit-dashboard", label: "Pit Dash", adminOnly: true },
   { href: "/match-scout", label: "Match Scout" },
   { href: "/drive", label: "Drive Dash", adminOnly: true },
+  // Admin-only because it authors the plan everyone else follows — a scout
+  // redrawing it mid-event costs more than a scout not having it.
+  { href: "/strategy", label: "Strategy", adminOnly: true },
   { href: "/event", label: "Event" },
   { href: "/picklist", label: "Picklist" },
   { href: "/talkie", label: "Talkie" },

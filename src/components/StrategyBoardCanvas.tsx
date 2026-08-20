@@ -1,0 +1,274 @@
+"use client";
+
+import {
+  SKETCH_CANVAS_CLASS,
+  sketchPointFrom,
+  useFieldImage,
+} from "@/components/FieldSketchPad";
+import {
+  paintField,
+  paintStrokes,
+  SKETCH_HEIGHT,
+  SKETCH_WIDTH,
+  strokeIndexAt,
+  type SketchStroke,
+} from "@/lib/fieldSketch";
+import {
+  ALLIANCE_COLORS,
+  clampToField,
+  type BoardSlot,
+  type TokenPosition,
+} from "@/lib/strategyBoard";
+import { useEffect, useRef, useState } from "react";
+
+// The board itself: a field you draw on, with six draggable robot markers over
+// it and any number of read-only auto paths laid underneath.
+//
+// Markers are DOM buttons rather than shapes painted on the canvas. Painting
+// them would mean hit-testing every drag against the same surface the pen
+// writes to, and it would leave a team number no screen reader could read.
+// They are composited back onto the canvas only when exporting (see
+// exportBoardImage).
+
+export type BoardTool = "pen" | "eraser";
+
+/** A scouted auto laid under the board's own strokes. */
+export interface BoardOverlay {
+  key: string;
+  strokes: SketchStroke[];
+}
+
+/** Overlays sit under the pen at reduced strength — they're reference, not
+ *  the plan being drawn. */
+const OVERLAY_OPACITY = 0.75;
+
+const PEN_WIDTH = 6;
+const TOKEN_DIAMETER = 46;
+
+interface StrategyBoardCanvasProps {
+  strokes: readonly SketchStroke[];
+  onStrokesChange: (strokes: SketchStroke[]) => void;
+  /** Committed once per gesture — a stroke finished, a marker dropped. */
+  onCommit: () => void;
+  tokens: Record<string, TokenPosition>;
+  onTokenMove: (teamNumber: number, position: TokenPosition) => void;
+  slots: readonly BoardSlot[];
+  overlays: readonly BoardOverlay[];
+  tool: BoardTool;
+  color: string;
+}
+
+export function StrategyBoardCanvas({
+  strokes,
+  onStrokesChange,
+  onCommit,
+  tokens,
+  onTokenMove,
+  slots,
+  overlays,
+  tool,
+  color,
+}: StrategyBoardCanvasProps) {
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const field = useFieldImage();
+  const drawing = useRef<SketchStroke | null>(null);
+
+  useEffect(() => {
+    const ctx = canvasRef.current?.getContext("2d");
+    if (!ctx) return;
+    paintField(ctx, field);
+    for (const overlay of overlays) {
+      paintStrokes(ctx, overlay.strokes, { opacity: OVERLAY_OPACITY });
+    }
+    paintStrokes(ctx, strokes);
+  }, [field, overlays, strokes]);
+
+  function handlePointerDown(event: React.PointerEvent<HTMLCanvasElement>) {
+    const point = sketchPointFrom(event);
+
+    if (tool === "eraser") {
+      const index = strokeIndexAt(strokes, point);
+      // Overlays aren't erasable here — they belong to the pit scout who drew
+      // them. Untick the auto to take one off the board.
+      if (index === -1) return;
+      onStrokesChange(strokes.filter((_, i) => i !== index));
+      onCommit();
+      return;
+    }
+
+    event.currentTarget.setPointerCapture(event.pointerId);
+    const stroke: SketchStroke = { color, width: PEN_WIDTH, points: [point] };
+    drawing.current = stroke;
+    onStrokesChange([...strokes, stroke]);
+  }
+
+  function handlePointerMove(event: React.PointerEvent<HTMLCanvasElement>) {
+    const stroke = drawing.current;
+    if (!stroke) return;
+    stroke.points.push(sketchPointFrom(event));
+    onStrokesChange([...strokes]);
+  }
+
+  function handlePointerUp() {
+    if (!drawing.current) return;
+    drawing.current = null;
+    onCommit();
+  }
+
+  return (
+    <div className="relative">
+      <canvas
+        ref={canvasRef}
+        width={SKETCH_WIDTH}
+        height={SKETCH_HEIGHT}
+        data-strategy-board-canvas
+        aria-label="Strategy board field"
+        onPointerDown={handlePointerDown}
+        onPointerMove={handlePointerMove}
+        onPointerUp={handlePointerUp}
+        onPointerCancel={handlePointerUp}
+        className={`${SKETCH_CANVAS_CLASS} ${
+          tool === "eraser" ? "cursor-cell" : "cursor-crosshair"
+        }`}
+      />
+      {slots.map((slot) => (
+        <TeamToken
+          key={slot.teamNumber}
+          slot={slot}
+          position={tokens[String(slot.teamNumber)]}
+          onMove={(position) => onTokenMove(slot.teamNumber, position)}
+          onCommit={onCommit}
+        />
+      ))}
+    </div>
+  );
+}
+
+/**
+ * One robot on the field. Drag it with a finger or a mouse; nudge it with the
+ * arrow keys once focused, which is the only way to place a marker precisely
+ * and the only way to place one at all without a pointer.
+ */
+function TeamToken({
+  slot,
+  position,
+  onMove,
+  onCommit,
+}: {
+  slot: BoardSlot;
+  position: TokenPosition | undefined;
+  onMove: (position: TokenPosition) => void;
+  onCommit: () => void;
+}) {
+  const [dragging, setDragging] = useState(false);
+  if (!position) return null;
+
+  // Percentages, so the marker tracks the canvas as it scales to its column.
+  const left = `${(position.x / SKETCH_WIDTH) * 100}%`;
+  const top = `${(position.y / SKETCH_HEIGHT) * 100}%`;
+
+  function pointFrom(event: React.PointerEvent<HTMLButtonElement>) {
+    const board = event.currentTarget.parentElement;
+    if (!board) return null;
+    const rect = board.getBoundingClientRect();
+    return clampToField({
+      x: ((event.clientX - rect.left) / rect.width) * SKETCH_WIDTH,
+      y: ((event.clientY - rect.top) / rect.height) * SKETCH_HEIGHT,
+    });
+  }
+
+  function handleKeyDown(event: React.KeyboardEvent<HTMLButtonElement>) {
+    const step = event.shiftKey ? 40 : 10;
+    const deltas: Record<string, TokenPosition> = {
+      ArrowLeft: { x: -step, y: 0 },
+      ArrowRight: { x: step, y: 0 },
+      ArrowUp: { x: 0, y: -step },
+      ArrowDown: { x: 0, y: step },
+    };
+    const delta = deltas[event.key];
+    if (!delta || !position) return;
+    event.preventDefault();
+    onMove(clampToField({ x: position.x + delta.x, y: position.y + delta.y }));
+    onCommit();
+  }
+
+  return (
+    <button
+      type="button"
+      aria-label={`${slot.alliance} alliance robot ${slot.teamNumber} — drag to move, or use the arrow keys`}
+      onPointerDown={(event) => {
+        event.currentTarget.setPointerCapture(event.pointerId);
+        setDragging(true);
+      }}
+      onPointerMove={(event) => {
+        if (!dragging) return;
+        const next = pointFrom(event);
+        if (next) onMove(next);
+      }}
+      onPointerUp={() => {
+        if (!dragging) return;
+        setDragging(false);
+        onCommit();
+      }}
+      onPointerCancel={() => setDragging(false)}
+      onKeyDown={handleKeyDown}
+      style={{
+        left,
+        top,
+        width: TOKEN_DIAMETER,
+        height: TOKEN_DIAMETER,
+        backgroundColor: ALLIANCE_COLORS[slot.alliance],
+      }}
+      className={`stat absolute -translate-x-1/2 -translate-y-1/2 touch-none rounded-full border-2 border-white text-xs font-semibold text-white transition-shadow focus:outline-none focus-visible:ring-2 focus-visible:ring-graphite-900 dark:focus-visible:ring-graphite-100 ${
+        dragging ? "cursor-grabbing" : "cursor-grab"
+      }`}
+    >
+      {slot.teamNumber}
+    </button>
+  );
+}
+
+/**
+ * Flatten the board — field, overlays, strokes and markers — into a PNG data
+ * URL. The markers live in the DOM, so they're painted here rather than
+ * captured; anything else would need a screenshot API the browser won't give
+ * a page about itself.
+ */
+export function exportBoardImage(
+  field: HTMLImageElement | null,
+  strokes: readonly SketchStroke[],
+  overlays: readonly BoardOverlay[],
+  tokens: Record<string, TokenPosition>,
+  slots: readonly BoardSlot[],
+): string | null {
+  const canvas = document.createElement("canvas");
+  canvas.width = SKETCH_WIDTH;
+  canvas.height = SKETCH_HEIGHT;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return null;
+
+  paintField(ctx, field);
+  for (const overlay of overlays) {
+    paintStrokes(ctx, overlay.strokes, { opacity: OVERLAY_OPACITY });
+  }
+  paintStrokes(ctx, strokes);
+
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.font = "600 18px ui-monospace, SFMono-Regular, monospace";
+  for (const slot of slots) {
+    const position = tokens[String(slot.teamNumber)];
+    if (!position) continue;
+    ctx.beginPath();
+    ctx.arc(position.x, position.y, TOKEN_DIAMETER / 2, 0, Math.PI * 2);
+    ctx.fillStyle = ALLIANCE_COLORS[slot.alliance];
+    ctx.fill();
+    ctx.lineWidth = 2;
+    ctx.strokeStyle = "#ffffff";
+    ctx.stroke();
+    ctx.fillStyle = "#ffffff";
+    ctx.fillText(String(slot.teamNumber), position.x, position.y);
+  }
+
+  return canvas.toDataURL("image/png");
+}

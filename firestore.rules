@@ -171,6 +171,15 @@ service cloud.firestore {
         allow read, create, update: if isLinkedSisterTeam(teamId);
         allow delete: if isSisterAdmin(teamId);
       }
+      // Strategy Board plans, one document per match (src/lib/strategyBoard.ts).
+      // A linked pair plays out of one canonical store, so the OTHER team's
+      // members write here through this rule — without it, the linked team's
+      // own board saves would be denied. Same-team access is inherited from
+      // the recursive rule above, exactly as it is for every other collection.
+      match /strategyBoards/{docId} {
+        allow read, create, update: if isLinkedSisterTeam(teamId);
+        allow delete: if isSisterAdmin(teamId);
+      }
       // The one carve-out from admin-only deletes: whoever posted a talkie
       // request may withdraw it, which is all the Talkie tab ever offers a
       // scout (see handleDelete there). Someone else's request still takes an
