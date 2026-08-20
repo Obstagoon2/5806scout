@@ -20,6 +20,7 @@ import {
   SCOUT_DUTIES_DOC_ID,
   type ScoutDutiesDoc,
 } from "@/lib/scoutDuty";
+import { showsInRoster } from "@/lib/emailVerification";
 import { normalizeStatus } from "@/lib/talkie";
 import type { UserProfile } from "@/lib/types";
 import {
@@ -94,17 +95,20 @@ function useCrew(): { roster: UserProfile[]; failed: boolean } {
         (snapshot) => {
           byTeam.set(
             teamId,
-            snapshot.docs.map((d) => {
-              const data = d.data();
-              return {
-                uid: d.id,
-                email: (data.email as string) ?? "",
-                fullName: (data.fullName as string) ?? "",
-                teamId: (data.teamId as string) ?? "",
-                role: (data.role as UserProfile["role"]) ?? "scout",
-                active: (data.active as boolean) ?? true,
-              };
-            }),
+            snapshot.docs
+              .map((d) => {
+                const data = d.data();
+                return {
+                  uid: d.id,
+                  email: (data.email as string) ?? "",
+                  fullName: (data.fullName as string) ?? "",
+                  teamId: (data.teamId as string) ?? "",
+                  role: (data.role as UserProfile["role"]) ?? "scout",
+                  active: (data.active as boolean) ?? true,
+                  emailVerified: data.emailVerified as boolean | undefined,
+                };
+              })
+              .filter(showsInRoster),
           );
           setRoster(
             [...byTeam.values()]

@@ -147,6 +147,11 @@ export async function inviteScout(
             teamId: { stringValue: caller.teamId },
             role: { stringValue: "scout" },
             active: { booleanValue: true },
+            // An invited address is still just an address someone typed, so
+            // it starts unverified and stays off the roster (showsInRoster)
+            // until the invitee proves the inbox is theirs by following the
+            // password-reset link below. Their first sign-in stamps it true.
+            emailVerified: { booleanValue: false },
             createdAt: { timestampValue: new Date().toISOString() },
           },
         }),

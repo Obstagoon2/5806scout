@@ -23,6 +23,7 @@ import {
   type ScoutDutiesDoc,
   type ScoutDuty,
 } from "@/lib/scoutDuty";
+import { showsInRoster } from "@/lib/emailVerification";
 import type { EventData } from "@/lib/eventData";
 import { auth, db } from "@/lib/firebase/client";
 import {
@@ -124,17 +125,20 @@ export default function TeamPage() {
         (snapshot) => {
           byTeam.set(
             teamId,
-            snapshot.docs.map((d) => {
-              const data = d.data();
-              return {
-                uid: d.id,
-                email: (data.email as string) ?? "",
-                fullName: (data.fullName as string) ?? "",
-                teamId: (data.teamId as string) ?? "",
-                role: (data.role as UserProfile["role"]) ?? "scout",
-                active: (data.active as boolean) ?? true,
-              };
-            }),
+            snapshot.docs
+              .map((d) => {
+                const data = d.data();
+                return {
+                  uid: d.id,
+                  email: (data.email as string) ?? "",
+                  fullName: (data.fullName as string) ?? "",
+                  teamId: (data.teamId as string) ?? "",
+                  role: (data.role as UserProfile["role"]) ?? "scout",
+                  active: (data.active as boolean) ?? true,
+                  emailVerified: data.emailVerified as boolean | undefined,
+                };
+              })
+              .filter(showsInRoster),
           );
           setRoster(
             teamIds
@@ -294,7 +298,7 @@ export default function TeamPage() {
         return;
       }
       setInviteSuccess(
-        `Invite sent to ${body?.invited ?? inviteEmail} — they'll get an email to set their password.`,
+        `Invite sent to ${body?.invited ?? inviteEmail} — they'll get an email to set their password, and join the roster below once they've opened it.`,
       );
       setInviteName("");
       setInviteEmail("");

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   needsEmailVerification,
+  showsInRoster,
   VERIFICATION_REQUIRED_FROM,
   type VerifiableUser,
 } from "./emailVerification";
@@ -74,5 +75,20 @@ describe("needsEmailVerification", () => {
 
   it("lets an account with no providers through", () => {
     expect(needsEmailVerification(user({ providerData: [] }))).toBe(false);
+  });
+});
+
+describe("showsInRoster", () => {
+  it("hides a member whose profile says the email is unverified", () => {
+    expect(showsInRoster({ emailVerified: false })).toBe(false);
+  });
+
+  it("shows a member once their session stamps the profile verified", () => {
+    expect(showsInRoster({ emailVerified: true })).toBe(true);
+  });
+
+  it("shows a profile written before the flag existed", () => {
+    expect(showsInRoster({})).toBe(true);
+    expect(showsInRoster({ emailVerified: undefined })).toBe(true);
   });
 });

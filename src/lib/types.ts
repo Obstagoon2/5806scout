@@ -7,6 +7,14 @@ export interface UserProfile {
   teamId: string;
   role: Role;
   active: boolean;
+  /**
+   * Whether this account has cleared the email gate (see
+   * src/lib/emailVerification.ts). Stamped on the profile by the owner's own
+   * session, because a teammate can't read anyone else's Firebase auth
+   * record — the roster needs it here or not at all. Absent on profiles
+   * written before the field shipped.
+   */
+  emailVerified?: boolean;
 }
 
 export interface Team {

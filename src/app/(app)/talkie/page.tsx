@@ -1,6 +1,7 @@
 "use client";
 
 import { useAuth } from "@/lib/auth/AuthProvider";
+import { showsInRoster } from "@/lib/emailVerification";
 import { db } from "@/lib/firebase/client";
 import {
   confirmDoneFields,
@@ -108,17 +109,20 @@ export default function TalkiePage() {
         (snapshot) => {
           byTeam.set(
             teamId,
-            snapshot.docs.map((d) => {
-              const data = d.data();
-              return {
-                uid: d.id,
-                email: (data.email as string) ?? "",
-                fullName: (data.fullName as string) ?? "",
-                teamId: (data.teamId as string) ?? "",
-                role: (data.role as UserProfile["role"]) ?? "scout",
-                active: (data.active as boolean) ?? true,
-              };
-            }),
+            snapshot.docs
+              .map((d) => {
+                const data = d.data();
+                return {
+                  uid: d.id,
+                  email: (data.email as string) ?? "",
+                  fullName: (data.fullName as string) ?? "",
+                  teamId: (data.teamId as string) ?? "",
+                  role: (data.role as UserProfile["role"]) ?? "scout",
+                  active: (data.active as boolean) ?? true,
+                  emailVerified: data.emailVerified as boolean | undefined,
+                };
+              })
+              .filter(showsInRoster),
           );
           setRoster(
             teamIds

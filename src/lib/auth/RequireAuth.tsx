@@ -2,8 +2,9 @@
 
 import { useAuth } from "@/lib/auth/AuthProvider";
 import { needsEmailVerification } from "@/lib/emailVerification";
-import { auth } from "@/lib/firebase/client";
+import { auth, db } from "@/lib/firebase/client";
 import { sendEmailVerification, signOut, type User } from "firebase/auth";
+import { doc, updateDoc } from "firebase/firestore";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 
@@ -60,10 +61,27 @@ function VerifyEmailGate({
   user: User;
   children: React.ReactNode;
 }) {
+  const { profile } = useAuth();
   const [cleared, setCleared] = useState(() => !needsEmailVerification(user));
   const [resent, setResent] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+
+  // Mirror the verdict onto users/{uid}, which is the only copy of it a
+  // teammate can read — the roster hides whoever is still held here (see
+  // showsInRoster). Read off the profile's own two fields rather than the
+  // profile object, so a snapshot that changed something else doesn't
+  // re-enter this. A write that fails leaves the roster a session behind,
+  // which the next sign-in corrects; there is nothing useful to say about it
+  // on a screen whose only job is "go read your email".
+  const storedVerified = profile?.emailVerified;
+  const hasProfile = profile !== null;
+  useEffect(() => {
+    if (!hasProfile || storedVerified === cleared) return;
+    void updateDoc(doc(db, "users", user.uid), {
+      emailVerified: cleared,
+    }).catch(() => {});
+  }, [cleared, hasProfile, storedVerified, user.uid]);
 
   useEffect(() => {
     if (cleared) return;

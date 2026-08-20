@@ -84,6 +84,22 @@ describe("inviteScout", () => {
     expect(result).toEqual({ email: "ada@team.org" });
   });
 
+  it("writes the invitee's profile unverified, so the roster waits for them", async () => {
+    const fetchMock = mockFetchSequence({});
+    vi.stubGlobal("fetch", fetchMock);
+
+    await inviteScout("caller-token", "Ada Lovelace", "ada@team.org");
+
+    const write = fetchMock.mock.calls.find(
+      ([url, init]) =>
+        (url as string).includes("firestore.googleapis.com") &&
+        (init as RequestInit | undefined)?.method === "PATCH",
+    );
+    expect(write).toBeDefined();
+    const body = JSON.parse((write![1] as RequestInit).body as string);
+    expect(body.fields.emailVerified).toEqual({ booleanValue: false });
+  });
+
   it("throws 401 when the caller's ID token doesn't resolve to a user", async () => {
     vi.stubGlobal(
       "fetch",

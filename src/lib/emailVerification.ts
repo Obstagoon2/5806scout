@@ -48,3 +48,26 @@ export function needsEmailVerification(user: VerifiableUser): boolean {
 
   return createdAt >= VERIFICATION_REQUIRED_FROM;
 }
+
+/** The slice of a profile roster visibility reads. */
+export interface RosterCandidate {
+  emailVerified?: boolean;
+}
+
+/**
+ * Should this teammate appear on the roster?
+ *
+ * The roster can't ask Firebase whether someone else verified — auth records
+ * are private to their owner — so it reads the flag each session stamps on its
+ * own `users/{uid}` doc. That makes the answer only as fresh as the member's
+ * last sign-in, which is the right trade: someone who has never come back to
+ * click the link is exactly who this hides.
+ *
+ * A missing flag means the doc predates the stamp, and those accounts stay
+ * visible for the same reason `needsEmailVerification` grandfathers them —
+ * emptying a mid-season roster to collect a click nobody was warned about
+ * costs more than it buys.
+ */
+export function showsInRoster(member: RosterCandidate): boolean {
+  return member.emailVerified !== false;
+}

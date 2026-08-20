@@ -9,11 +9,13 @@ const {
   replaceMock,
   sendEmailVerificationMock,
   signOutMock,
+  updateDocMock,
 } = vi.hoisted(() => ({
   useAuthMock: vi.fn(),
   replaceMock: vi.fn(),
   sendEmailVerificationMock: vi.fn(),
   signOutMock: vi.fn(),
+  updateDocMock: vi.fn(async () => {}),
 }));
 
 vi.mock("@/lib/auth/AuthProvider", () => ({
@@ -29,6 +31,11 @@ vi.mock("@/lib/firebase/client", () => ({ auth: {}, db: {} }));
 vi.mock("firebase/auth", () => ({
   sendEmailVerification: sendEmailVerificationMock,
   signOut: signOutMock,
+}));
+
+vi.mock("firebase/firestore", () => ({
+  doc: (_db: unknown, ...path: string[]) => path.join("/"),
+  updateDoc: updateDocMock,
 }));
 
 const AFTER_CUTOFF = new Date(VERIFICATION_REQUIRED_FROM + 1000).toISOString();
@@ -52,7 +59,13 @@ beforeEach(() => {
   replaceMock.mockReset();
   sendEmailVerificationMock.mockReset();
   signOutMock.mockReset();
+  updateDocMock.mockClear();
 });
+
+/** A profile as the gate reads it — only `emailVerified` is ever touched. */
+function fakeProfile(emailVerified?: boolean) {
+  return { uid: "abc123", emailVerified };
+}
 
 describe("RequireAuth", () => {
   it("shows a loading state and does not redirect while auth is resolving", () => {
@@ -194,5 +207,82 @@ describe("the email verification gate", () => {
     await userEvent.click(screen.getByRole("button", { name: "Sign out" }));
 
     expect(signOutMock).toHaveBeenCalled();
+  });
+});
+
+describe("RequireAuth roster stamp", () => {
+  it("marks the profile verified once the gate lets someone through", async () => {
+    useAuthMock.mockReturnValue({
+      user: fakeUser({ emailVerified: true }),
+      profile: fakeProfile(false),
+      loading: false,
+    });
+
+    render(
+      <RequireAuth>
+        <p>Scouting</p>
+      </RequireAuth>,
+    );
+
+    await waitFor(() =>
+      expect(updateDocMock).toHaveBeenCalledWith("users/abc123", {
+        emailVerified: true,
+      }),
+    );
+  });
+
+  it("marks the profile unverified while the gate is still holding them", async () => {
+    useAuthMock.mockReturnValue({
+      user: fakeUser({ emailVerified: false }),
+      profile: fakeProfile(true),
+      loading: false,
+    });
+
+    render(
+      <RequireAuth>
+        <p>Scouting</p>
+      </RequireAuth>,
+    );
+
+    await screen.findByText("Verify your email");
+    await waitFor(() =>
+      expect(updateDocMock).toHaveBeenCalledWith("users/abc123", {
+        emailVerified: false,
+      }),
+    );
+  });
+
+  it("writes nothing when the profile already agrees with the gate", async () => {
+    useAuthMock.mockReturnValue({
+      user: fakeUser({ emailVerified: true }),
+      profile: fakeProfile(true),
+      loading: false,
+    });
+
+    render(
+      <RequireAuth>
+        <p>Scouting</p>
+      </RequireAuth>,
+    );
+
+    await screen.findByText("Scouting");
+    expect(updateDocMock).not.toHaveBeenCalled();
+  });
+
+  it("waits for the profile to load rather than writing blind", async () => {
+    useAuthMock.mockReturnValue({
+      user: fakeUser({ emailVerified: true }),
+      profile: null,
+      loading: false,
+    });
+
+    render(
+      <RequireAuth>
+        <p>Scouting</p>
+      </RequireAuth>,
+    );
+
+    await screen.findByText("Scouting");
+    expect(updateDocMock).not.toHaveBeenCalled();
   });
 });

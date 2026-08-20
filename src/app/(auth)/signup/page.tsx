@@ -2,6 +2,7 @@
 
 import { GoogleSignInButton } from "@/components/GoogleSignInButton";
 import { PasswordField } from "@/components/PasswordField";
+import { needsEmailVerification } from "@/lib/emailVerification";
 import { auth, db } from "@/lib/firebase/client";
 import {
   createUserWithEmailAndPassword,
@@ -57,6 +58,11 @@ export default function SignupPage() {
           teamId,
           role: asAdmin ? "admin" : "scout",
           active: true,
+          // The roster reads verification from here, so the profile starts
+          // out saying what the gate would: false for a typed-in address,
+          // true when the provider already vouched for it. Cleared for real
+          // by RequireAuth once the emailed link is opened.
+          emailVerified: !needsEmailVerification(newUser),
           createdAt: serverTimestamp(),
         });
       });
