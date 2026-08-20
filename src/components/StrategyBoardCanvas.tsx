@@ -43,7 +43,10 @@ export interface BoardOverlay {
 const OVERLAY_OPACITY = 0.75;
 
 const PEN_WIDTH = 6;
-const TOKEN_DIAMETER = 46;
+/** Markers are squares — a robot has a frame perimeter, and a square reads as
+ *  one you can line up against a field element in a way a disc does not. */
+const TOKEN_SIZE = 46;
+const TOKEN_RADIUS = 6;
 
 interface StrategyBoardCanvasProps {
   strokes: readonly SketchStroke[];
@@ -234,11 +237,11 @@ function TeamToken({
       style={{
         left,
         top,
-        width: TOKEN_DIAMETER,
-        height: TOKEN_DIAMETER,
+        width: TOKEN_SIZE,
+        height: TOKEN_SIZE,
         backgroundColor: ALLIANCE_COLORS[slot.alliance],
       }}
-      className={`stat absolute -translate-x-1/2 -translate-y-1/2 touch-none rounded-full border-2 border-white text-xs font-semibold text-white transition-shadow focus:outline-none focus-visible:ring-2 focus-visible:ring-graphite-900 dark:focus-visible:ring-graphite-100 ${
+      className={`stat absolute -translate-x-1/2 -translate-y-1/2 touch-none rounded-md border-2 border-white text-xs font-semibold text-white transition-shadow focus:outline-none focus-visible:ring-2 focus-visible:ring-graphite-900 dark:focus-visible:ring-graphite-100 ${
         dragging ? "cursor-grabbing" : "cursor-grab"
       }`}
     >
@@ -278,8 +281,18 @@ export function exportBoardImage(
   for (const slot of slots) {
     const position = tokens[String(slot.teamNumber)];
     if (!position) continue;
+    // Same rounded square the DOM marker draws, so an exported board looks
+    // like the one on screen.
     ctx.beginPath();
-    ctx.arc(position.x, position.y, TOKEN_DIAMETER / 2, 0, Math.PI * 2);
+    const x = position.x - TOKEN_SIZE / 2;
+    const y = position.y - TOKEN_SIZE / 2;
+    // roundRect is recent and the pits are full of old tablets; a square
+    // corner is a fine marker, a thrown export is not.
+    if (typeof ctx.roundRect === "function") {
+      ctx.roundRect(x, y, TOKEN_SIZE, TOKEN_SIZE, TOKEN_RADIUS);
+    } else {
+      ctx.rect(x, y, TOKEN_SIZE, TOKEN_SIZE);
+    }
     ctx.fillStyle = ALLIANCE_COLORS[slot.alliance];
     ctx.fill();
     ctx.lineWidth = 2;

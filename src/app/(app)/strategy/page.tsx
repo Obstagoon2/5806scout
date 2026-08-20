@@ -7,7 +7,14 @@ import {
   type BoardOverlay,
   type BoardTool,
 } from "@/components/StrategyBoardCanvas";
+import { aggregateByTeam, type MatchSubmission } from "@/lib/aggregate";
 import { useAuth } from "@/lib/auth/AuthProvider";
+import {
+  buildTeamProfiles,
+  predictMatch,
+  SCORING_WEIGHTS,
+  type MatchPrediction,
+} from "@/lib/drive";
 import type { EventData, EventMatch } from "@/lib/eventData";
 import { db } from "@/lib/firebase/client";
 import {
@@ -32,6 +39,7 @@ import {
   autoSelectionKey,
   BOARD_PHASES,
   DEFAULT_PHASE,
+  forecastSplit,
   matchLabel,
   matchSlots,
   nextUpcomingMatch,
@@ -43,10 +51,14 @@ import {
   type PhaseId,
   type TokenPosition,
 } from "@/lib/strategyBoard";
+import { useScoutForms } from "@/lib/useScoutForms";
 import {
+  collection,
   doc,
   getDoc,
   onSnapshot,
+  orderBy,
+  query,
   serverTimestamp,
   setDoc,
 } from "firebase/firestore";
@@ -68,6 +80,11 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 export default function StrategyPage() {
   const { dataTeamId, profile, user } = useAuth();
   const field = useFieldImage();
+  // The prediction runs off the team's effective match schema, the same one
+  // Drive Dash aggregates against — a form an admin customized has to score
+  // the same on both pages or the two would disagree about the same match.
+  const { matchSections } = useScoutForms();
+  const [submissions, setSubmissions] = useState<MatchSubmission[]>([]);
 
   const [event, setEvent] = useState<EventData | null>(null);
   const [matchKey, setMatchKey] = useState<string | null>(null);
@@ -99,6 +116,33 @@ export default function StrategyPage() {
       (snapshot) =>
         setEvent(snapshot.exists() ? (snapshot.data() as EventData) : null),
       () => setError("Couldn't load the event schedule."),
+    );
+  }, [dataTeamId]);
+
+  useEffect(() => {
+    if (!dataTeamId) return;
+    return onSnapshot(
+      query(
+        collection(db, "teams", dataTeamId, "matchScouting"),
+        orderBy("matchNumber", "asc"),
+      ),
+      (snapshot) =>
+        setSubmissions(
+          snapshot.docs.map((d) => {
+            const data = d.data();
+            return {
+              id: d.id,
+              matchNumber: data.matchNumber as number,
+              scoutedTeam: data.scoutedTeam as string,
+              alliance: data.alliance as "red" | "blue",
+              values: data.values ?? {},
+              scoutName: (data.scoutName as string) ?? "",
+            };
+          }),
+        ),
+      // A short prediction is worse than none: say so rather than quietly
+      // predicting off half the event's scouting.
+      () => setError("Couldn't load scouting data — the prediction is hidden."),
     );
   }, [dataTeamId]);
 
@@ -183,6 +227,21 @@ export default function StrategyPage() {
       cancelled = true;
     };
   }, [dataTeamId, selectedMatch]);
+
+  // Identical pipeline to Drive Dash: scouted averages priced with the season's
+  // weights, Statbotics EPA standing in for anyone nobody has scouted, summed
+  // per alliance. Imported rather than reimplemented so the two pages can never
+  // disagree about the same match.
+  const prediction: MatchPrediction | null = useMemo(() => {
+    if (!selectedMatch || !event) return null;
+    const profiles = buildTeamProfiles(
+      matchSections,
+      aggregateByTeam(matchSections, submissions),
+      SCORING_WEIGHTS,
+      event.teams,
+    );
+    return predictMatch(selectedMatch, profiles);
+  }, [event, matchSections, selectedMatch, submissions]);
 
   const phaseState = board.phases[phase];
   const strokes = useMemo(
@@ -339,6 +398,8 @@ export default function StrategyPage() {
             }}
           />
 
+          {prediction && <MatchForecast prediction={prediction} />}
+
           <PhaseTabs phase={phase} onSelect={setPhase} />
 
           {error && (
@@ -422,7 +483,9 @@ function MatchPicker({
   onSelect: (key: string) => void;
 }) {
   return (
-    <label className="flex flex-col gap-1.5 sm:max-w-xs">
+    // Full width: the option text carries both alliances' team numbers, and a
+    // narrow select truncates the blue three away.
+    <label className="flex w-full flex-col gap-1.5">
       <span className="text-sm font-medium text-graphite-700">Match</span>
       <select
         value={selected?.key ?? ""}
@@ -437,6 +500,117 @@ function MatchPicker({
         ))}
       </select>
     </label>
+  );
+}
+
+/**
+ * Who the numbers say wins, and by how much. The same figures Drive Dash
+ * shows for this match — see the prediction memo above for why they're built
+ * from the imported pipeline rather than a second copy of the arithmetic.
+ *
+ * The favourite is drawn in its own colour and the underdog muted, so which
+ * way the match leans reads at a glance. An exact 50/50 has no favourite.
+ */
+function MatchForecast({ prediction }: { prediction: MatchPrediction }) {
+  const { red, blue, redWinProbability } = prediction;
+
+  const { redPercent, bluePercent, favourite } =
+    forecastSplit(redWinProbability);
+
+  const unknown = [...red.unknownTeams, ...blue.unknownTeams];
+
+  return (
+    <div className="surface-card flex flex-col gap-3 p-4">
+      <div className="flex items-center justify-between gap-3">
+        <p className="text-xs font-semibold uppercase tracking-widest text-maroon-700 dark:text-maroon-300">
+          Predicted result
+        </p>
+        {redPercent !== null && (
+          <p className="text-xs text-graphite-500">
+            {favourite === null
+              ? "Too close to call"
+              : `${favourite === "red" ? "Red" : "Blue"} favoured`}
+          </p>
+        )}
+      </div>
+
+      <div className="flex items-end justify-between gap-4">
+        <ForecastSide
+          label="Red"
+          points={red.points}
+          percent={redPercent}
+          muted={favourite === "blue"}
+          className="text-maroon-700 dark:text-maroon-300"
+        />
+        <span className="stat pb-1 text-sm text-graphite-400">vs</span>
+        <ForecastSide
+          label="Blue"
+          points={blue.points}
+          percent={bluePercent}
+          muted={favourite === "red"}
+          className="text-sky-700 dark:text-sky-300"
+          alignRight
+        />
+      </div>
+
+      {redPercent !== null && (
+        <div
+          role="img"
+          aria-label={`Red ${redPercent} percent, blue ${bluePercent} percent`}
+          className="flex h-1.5 overflow-hidden rounded-full bg-graphite-100"
+        >
+          <span
+            style={{ width: `${redPercent}%` }}
+            className="bg-maroon-600"
+          />
+          <span className="flex-1 bg-sky-600" />
+        </div>
+      )}
+
+      {unknown.length > 0 && (
+        <p className="text-xs italic text-graphite-500">
+          Nothing known about {unknown.join(", ")} — their points are missing
+          from the total, so the split leans away from their alliance.
+        </p>
+      )}
+    </div>
+  );
+}
+
+function ForecastSide({
+  label,
+  points,
+  percent,
+  muted,
+  className,
+  alignRight,
+}: {
+  label: string;
+  points: number | null;
+  percent: number | null;
+  muted: boolean;
+  className: string;
+  alignRight?: boolean;
+}) {
+  return (
+    <div className={`flex flex-col ${alignRight ? "items-end" : "items-start"}`}>
+      <span className="text-xs font-semibold uppercase tracking-widest text-graphite-500">
+        {label}
+      </span>
+      <span
+        className={`stat text-2xl font-bold ${muted ? "text-graphite-400" : className}`}
+      >
+        {points !== null ? points.toFixed(0) : "—"}
+        <span className="ml-1 font-sans text-xs font-medium normal-case tracking-normal text-graphite-500">
+          pts
+        </span>
+      </span>
+      <span
+        className={`stat text-sm font-semibold ${muted ? "text-graphite-400" : className}`}
+      >
+        {percent !== null ? `${percent}%` : "—"}
+      </span>
+    </div>
   );
 }
 

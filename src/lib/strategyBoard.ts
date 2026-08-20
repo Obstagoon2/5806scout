@@ -265,3 +265,35 @@ export function phaseTokens(
   }
   return tokens;
 }
+
+// --- Forecast presentation -------------------------------------------------
+
+export interface ForecastSplit {
+  redPercent: number | null;
+  bluePercent: number | null;
+  /** Who the numbers favour, or null when it is level (or unknowable). */
+  favourite: Alliance | null;
+}
+
+/**
+ * Both alliances' win chance as whole percentages, plus who is favoured.
+ *
+ * Rounded once and subtracted, never rounded twice: rounding each side
+ * independently shows 49% against 52% often enough to be noticed, and a board
+ * that cannot add up is a board nobody trusts on the harder numbers either.
+ */
+export function forecastSplit(
+  redWinProbability: number | null,
+): ForecastSplit {
+  if (redWinProbability === null) {
+    return { redPercent: null, bluePercent: null, favourite: null };
+  }
+  const redPercent = Math.round(redWinProbability * 100);
+  const bluePercent = 100 - redPercent;
+  return {
+    redPercent,
+    bluePercent,
+    favourite:
+      redPercent === bluePercent ? null : redPercent > bluePercent ? "red" : "blue",
+  };
+}

@@ -7,6 +7,7 @@ import {
   clampToField,
   defaultTokenPositions,
   emptyBoardState,
+  forecastSplit,
   isPhaseId,
   isUnplayed,
   matchLabel,
@@ -222,5 +223,48 @@ describe("phaseTokens", () => {
 describe("autoSelectionKey", () => {
   it("pairs a team with one of its routines", () => {
     expect(autoSelectionKey(5806, "a1")).toBe("5806:a1");
+  });
+});
+
+describe("forecastSplit", () => {
+  it("splits a lopsided match to the favourite", () => {
+    expect(forecastSplit(0.82)).toEqual({
+      redPercent: 82,
+      bluePercent: 18,
+      favourite: "red",
+    });
+  });
+
+  it("favours blue when the odds run the other way", () => {
+    expect(forecastSplit(0.19)).toEqual({
+      redPercent: 19,
+      bluePercent: 81,
+      favourite: "blue",
+    });
+  });
+
+  it("names no favourite on a dead heat", () => {
+    expect(forecastSplit(0.5)).toEqual({
+      redPercent: 50,
+      bluePercent: 50,
+      favourite: null,
+    });
+  });
+
+  it("always totals 100, even where rounding would drift", () => {
+    // 0.495 rounds to 50 on its own, and so does 1 - 0.495. Rounding once and
+    // subtracting is what keeps the pair honest.
+    for (const p of [0.495, 0.505, 0.005, 0.334, 0.666, 0.999]) {
+      const { redPercent, bluePercent } = forecastSplit(p);
+      expect((redPercent ?? 0) + (bluePercent ?? 0)).toBe(100);
+    }
+  });
+
+  it("has nothing to show when neither alliance can be priced", () => {
+    expect(forecastSplit(null)).toEqual({
+      redPercent: null,
+      bluePercent: null,
+      favourite: null,
+    });
   });
 });
