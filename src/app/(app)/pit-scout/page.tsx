@@ -2,6 +2,7 @@
 
 import { DeepLinkParams } from "@/components/DeepLinkParams";
 import { MyPitAssignments } from "@/components/MyAssignments";
+import { PitAutos } from "@/components/PitAutos";
 import { SchemaForm } from "@/components/SchemaForm";
 import { useAuth } from "@/lib/auth/AuthProvider";
 import { db } from "@/lib/firebase/client";
@@ -11,6 +12,15 @@ import {
   type FormValues,
 } from "@/lib/formSchema";
 import { splitMediaValues } from "@/lib/formMedia";
+import {
+  isBlankAuto,
+  parseAutoPaths,
+  parseAutos,
+  removedAutoIds,
+  splitAutos,
+  withPaths,
+  type PitAutoWithPath,
+} from "@/lib/pitAutos";
 import { PIT_MEDIA_COLLECTION } from "@/lib/pitScoutSchema";
 import { submitLocally } from "@/lib/offlineSync";
 import { SyncStatus } from "@/components/SyncStatus";
@@ -18,6 +28,7 @@ import { useScoutForms } from "@/lib/useScoutForms";
 import {
   arrayUnion,
   collection,
+  deleteField,
   doc,
   getDoc,
   onSnapshot,
@@ -53,6 +64,13 @@ export default function PitScoutPage() {
   const [values, setValues] = useState<FormValues>(() =>
     emptyValues(pitSections),
   );
+  // Autos are their own list rather than a form value: a robot runs a variable
+  // number of them, and each needs an identity the Strategy Board can point a
+  // checkbox at. See src/lib/pitAutos.ts.
+  const [autos, setAutos] = useState<PitAutoWithPath[]>([]);
+  // The auto ids this robot was loaded with, so a save can positively delete
+  // the path of one the scout removed (see removedAutoIds).
+  const [loadedAutoIds, setLoadedAutoIds] = useState<string[]>([]);
   const [status, setStatus] = useState<Status>({ state: "idle" });
 
   useEffect(() => {
@@ -126,6 +144,16 @@ export default function PitScoutPage() {
       ...(snapshot.data()?.values as FormValues | undefined),
       ...(mediaSnapshot?.data()?.values as FormValues | undefined),
     });
+    // Names and notes ride in the core doc, paths in the media doc — rejoined
+    // here into the one list the editor works with.
+    const loadedAutos = parseAutos(snapshot.data()?.autos);
+    setAutos(
+      withPaths(
+        loadedAutos,
+        parseAutoPaths(mediaSnapshot?.data()?.autoPaths),
+      ),
+    );
+    setLoadedAutoIds(loadedAutos.map((auto) => auto.id));
     return true;
   }
 
@@ -140,6 +168,15 @@ export default function PitScoutPage() {
 
     setStatus({ state: "saving" });
     const { core, media } = splitMediaValues(pitSections, values);
+    // Rows the scout added and never filled in would show up on the Strategy
+    // Board as nameless checkboxes, so they never reach the document.
+    const { core: autoList, paths: autoPaths } = splitAutos(
+      autos.filter((auto) => !isBlankAuto(auto)),
+    );
+    const autoPathWrite: Record<string, unknown> = { ...autoPaths };
+    for (const id of removedAutoIds(loadedAutoIds, autoList)) {
+      autoPathWrite[id] = deleteField();
+    }
     try {
       // Handed to Firestore's queue rather than awaited: offline the write
       // lands in the IndexedDB cache immediately but the promise only settles
@@ -154,6 +191,9 @@ export default function PitScoutPage() {
           {
             scoutedTeam: activeTeam,
             values: core,
+            // Written whole, not merged into: dropping an auto has to remove
+            // it, and a merged array would keep the old entries alongside.
+            autos: autoList,
             scoutName: profile.fullName,
             scoutUid: user.uid,
             updatedAt: serverTimestamp(),
@@ -161,13 +201,14 @@ export default function PitScoutPage() {
           { merge: true },
         ),
       );
-      if (Object.keys(media).length > 0) {
+      if (Object.keys(media).length > 0 || Object.keys(autoPathWrite).length > 0) {
         submitLocally(
           setDoc(
             doc(db, "teams", dataTeamId, PIT_MEDIA_COLLECTION, activeTeam),
             {
               scoutedTeam: activeTeam,
               values: media,
+              autoPaths: autoPathWrite,
               updatedAt: serverTimestamp(),
             },
             { merge: true },
@@ -185,6 +226,7 @@ export default function PitScoutPage() {
           { completedTeams: arrayUnion(teamNumber) },
         ).catch(() => undefined);
       }
+      setLoadedAutoIds(autoList.map((auto) => auto.id));
       setStatus({ state: "saved" });
     } catch (err) {
       setStatus({
@@ -269,6 +311,14 @@ export default function PitScoutPage() {
             values={values}
             onChange={(id, value) => {
               setValues((prev) => ({ ...prev, [id]: value }));
+              if (status.state !== "idle") setStatus({ state: "idle" });
+            }}
+          />
+
+          <PitAutos
+            autos={autos}
+            onChange={(next) => {
+              setAutos(next);
               if (status.state !== "idle") setStatus({ state: "idle" });
             }}
           />
