@@ -22,6 +22,10 @@ export const NAV_ITEMS: NavItem[] = [
   { href: "/pit-dashboard", label: "Pit Dash", adminOnly: true },
   { href: "/match-scout", label: "Match Scout" },
   { href: "/drive", label: "Drive Dash", adminOnly: true },
+  // Film study after the fact, next to the dashboard that predicted it —
+  // admin-only for the same reason Strategy is: it's the record everyone else
+  // reads, not a scratchpad.
+  { href: "/match-review", label: "Review", adminOnly: true },
   // Admin-only because it authors the plan everyone else follows — a scout
   // redrawing it mid-event costs more than a scout not having it.
   { href: "/strategy", label: "Strategy", adminOnly: true },

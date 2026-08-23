@@ -16,9 +16,25 @@ import {
 import type { EventData } from "@/lib/eventData";
 import { db } from "@/lib/firebase/client";
 import type { FormValues } from "@/lib/formSchema";
+import {
+  formatMoment,
+  momentAt,
+  resolveOffset,
+  sortNotes,
+  type MatchReviewDoc,
+  type MatchReviewNote,
+} from "@/lib/matchReview";
+import { matchLabel } from "@/lib/pitDashboard";
 import { PIT_MEDIA_COLLECTION } from "@/lib/pitScoutSchema";
 import { useScoutForms } from "@/lib/useScoutForms";
-import { collection, doc, onSnapshot, orderBy, query } from "firebase/firestore";
+import {
+  collection,
+  doc,
+  onSnapshot,
+  orderBy,
+  query,
+  where,
+} from "firebase/firestore";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
@@ -33,12 +49,68 @@ export default function TeamDetailPage() {
   const [pitValues, setPitValues] = useState<FormValues | null>(null);
   const [pitScoutName, setPitScoutName] = useState<string | null>(null);
   const [pitMedia, setPitMedia] = useState<FormValues | null>(null);
+  const [filmNotes, setFilmNotes] = useState<MatchReviewNote[]>([]);
+  const [reviewDocs, setReviewDocs] = useState<MatchReviewDoc[]>([]);
 
   useEffect(() => {
     if (!dataTeamId) return;
     return onSnapshot(doc(db, "teams", dataTeamId, "config", "event"), (s) => {
       setEvent(s.exists() ? (s.data() as EventData) : null);
     });
+  }, [dataTeamId]);
+
+  // Notes an admin pinned to this robot while reviewing film. Queried by team
+  // rather than filtered client-side: over a whole event these outnumber the
+  // handful that mention any one robot.
+  useEffect(() => {
+    if (!dataTeamId) return;
+    const team = Number(teamNumber);
+    if (!Number.isInteger(team)) return;
+    return onSnapshot(
+      query(
+        collection(db, "teams", dataTeamId, "matchReviewNotes"),
+        where("teamNumber", "==", team),
+      ),
+      (snapshot) =>
+        setFilmNotes(
+          snapshot.docs.map((d) => {
+            const data = d.data();
+            return {
+              id: d.id,
+              matchKey: (data.matchKey as string) ?? "",
+              videoSeconds: (data.videoSeconds as number) ?? 0,
+              teamNumber: team,
+              text: (data.text as string) ?? "",
+              authorUid: (data.authorUid as string) ?? "",
+              authorName: (data.authorName as string) ?? "",
+              createdAtMs: (data.createdAtMs as number) ?? 0,
+            };
+          }),
+        ),
+      // A film note that silently vanishes reads as "nobody noticed anything",
+      // so the section hides itself rather than showing a short list.
+      () => setFilmNotes([]),
+    );
+  }, [dataTeamId, teamNumber]);
+
+  // Where the green flag sits in each clip, so a note's stamp reads in arena
+  // time here the same way it does on the Review tab.
+  useEffect(() => {
+    if (!dataTeamId) return;
+    return onSnapshot(
+      collection(db, "teams", dataTeamId, "matchReview"),
+      (snapshot) =>
+        setReviewDocs(
+          snapshot.docs.map((d) => ({
+            matchKey: d.id,
+            videoOffsetSeconds: (d.data().videoOffsetSeconds as number) ?? 0,
+            confirmed: (d.data().confirmed as boolean) ?? false,
+            markedByName: (d.data().markedByName as string) ?? "",
+            markedAtMs: (d.data().markedAtMs as number) ?? 0,
+          })),
+        ),
+      () => setReviewDocs([]),
+    );
   }, [dataTeamId]);
 
   // Whole-collection listener (same as the Data page) so the event-wide
@@ -318,6 +390,34 @@ export default function TeamDetailPage() {
                 </p>
               </li>
             ))}
+          </ul>
+        </section>
+      )}
+
+      {filmNotes.length > 0 && (
+        <section className="flex flex-col gap-3">
+          <h2 className="section-title">Film notes</h2>
+          <ul className="surface-card divide-y divide-graphite-100">
+            {sortNotes(filmNotes).map((note) => {
+              const match = event?.matches.find((m) => m.key === note.matchKey);
+              const offset = resolveOffset(note.matchKey, reviewDocs);
+              const stamp = formatMoment(
+                momentAt(note.videoSeconds, offset?.seconds ?? 0),
+              );
+              return (
+                <li key={note.id} className="flex flex-col gap-0.5 px-4 py-2.5">
+                  <p className="text-sm text-graphite-700">{note.text}</p>
+                  <p className="text-xs text-graphite-500">
+                    <span className="stat">
+                      {match ? matchLabel(match) : note.matchKey}
+                      {" · "}
+                      {stamp}
+                    </span>
+                    {note.authorName && ` — ${note.authorName}`}
+                  </p>
+                </li>
+              );
+            })}
           </ul>
         </section>
       )}
