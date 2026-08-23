@@ -398,11 +398,11 @@ export default function StrategyPage() {
   return (
     <main className="mx-auto flex w-full max-w-6xl flex-col gap-6 px-4 py-8 md:px-6">
       <div>
-        <h1 className="flex items-center gap-2.5 text-xl font-semibold text-graphite-900">
-          <span aria-hidden className="h-5 w-1.5 bg-maroon-600" />
+        <h1 className="page-title">
+          <span aria-hidden className="page-rule" />
           Strategy Board
         </h1>
-        <p className="mt-1 text-sm text-graphite-500">
+        <p className="page-lede">
           One board per match, five phases deep. Everything you draw is shared
           with the team the moment you lift your finger.
         </p>

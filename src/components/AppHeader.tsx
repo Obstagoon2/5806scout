@@ -45,13 +45,17 @@ export function AppHeader() {
                 className="h-7 w-7 shrink-0 rounded-md bg-white object-contain"
               />
             )}
-            <span className="flex min-w-0 items-baseline gap-2">
+            <span className="flex min-w-0 items-center gap-2">
               <span className="truncate text-base font-semibold tracking-tight">
                 FRC Scouting
               </span>
+              {/* The team number is data, so it gets the mono treatment and a
+                  plate of its own — at the old bare maroon-100 it read as a
+                  faded piece of the wordmark rather than as whose console
+                  this is. */}
               {profile && (
-                <span className="stat shrink-0 text-sm text-maroon-100">
-                  #{profile.teamId}
+                <span className="stat shrink-0 rounded border border-maroon-300/40 px-1.5 py-0.5 text-xs text-maroon-100">
+                  {profile.teamId}
                 </span>
               )}
             </span>

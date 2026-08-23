@@ -156,7 +156,7 @@ export default function SignupPage() {
         <h1 className="text-2xl font-semibold text-graphite-900">
           {asAdmin ? "Create an admin account" : "Create a scout account"}
         </h1>
-        <p className="mt-1 text-sm text-graphite-500">
+        <p className="page-lede">
           Scouts sign up with just the form below, then confirm the emailed
           link. A team can have as many admins as it needs — tick the box to
           sign up as one, or have an existing admin promote you from the Team

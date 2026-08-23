@@ -207,6 +207,69 @@ body {
     @apply text-xs font-semibold uppercase tracking-widest text-graphite-500;
   }
 
+  /* ---- Page frame ----------------------------------------------------- *
+   * Every screen opened with its own hand-written heading block and its own
+   * container width — 2xl through 1600px, picked per page. The result read
+   * as sixteen layouts rather than one console. These are the three pieces
+   * every page now composes from, so tuning the frame is one edit, not
+   * seventeen.
+   * -------------------------------------------------------------------- */
+
+  /* The maroon mark that opens every page title. Taller than the cap height
+     it sits beside, so the row reads as a masthead rather than a bullet. */
+  .page-rule {
+    @apply h-6 w-1.5 shrink-0 bg-maroon-600;
+  }
+
+  .page-title {
+    /* DESIGN.md's `display` step exactly: 1.5rem / 600 / 1.25. Pages had been
+       setting text-xl by hand, a step below the documented heading size. */
+    @apply flex items-center gap-3 text-2xl font-semibold leading-tight tracking-tight text-graphite-900;
+  }
+
+  /* The line under a page title. Loosened from the old mt-1: a lede set
+     tight against a heading reads as a wrapped subtitle, not as its own
+     sentence. */
+  .page-lede {
+    @apply mt-1.5 max-w-2xl text-sm leading-relaxed text-graphite-500;
+  }
+
+  /* ---- Data tables ----------------------------------------------------- *
+   * The Data, Picklist, Drive, and Teams screens all hand-rolled the same
+   * table: uppercase head, hairline divides, hover row. Collected here so a
+   * column of numbers reads the same wherever it appears — and so the head
+   * can stay put while a hundred rows scroll under it, which is the whole
+   * job of these screens the night before eliminations.
+   * -------------------------------------------------------------------- */
+  .data-table {
+    @apply w-full min-w-max text-left text-sm;
+    /* Digits share one advance width, so a column stays a column even in
+       the sans face (the mono `.stat` cells get it for free). */
+    font-variant-numeric: tabular-nums;
+  }
+  .data-table thead tr {
+    @apply border-b border-graphite-200 text-xs font-semibold uppercase tracking-wider text-graphite-500;
+  }
+  .data-table thead th {
+    @apply sticky top-0 z-10 bg-surface px-3 py-2.5;
+  }
+  /* Row divides stay on the markup's own `divide-y` — this only carries the
+     hover, warmed from grey to a maroon tint so tracking a row across a wide
+     table reads as the app's own color rather than as a disabled state. */
+  .data-table tbody tr {
+    @apply transition-colors hover:bg-maroon-50/60;
+  }
+  .data-table tbody td {
+    @apply px-3 py-2.5;
+  }
+
+  /* Caps a long table so its head can actually stick. Without a height the
+     sticky above is a no-op — which is fine for the short tables that don't
+     use this. */
+  .table-scroll {
+    @apply max-h-[70vh] overflow-auto;
+  }
+
   .badge {
     @apply inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide;
   }
@@ -225,6 +288,17 @@ body {
 
   .stat {
     font-family: var(--font-stat), monospace;
+  }
+
+  /* A row that must stay one line and may need to scroll to do it (the
+     desktop tab strip). The bar itself would be chrome competing with the
+     content under it, and the row is reachable by trackpad, shift-wheel and
+     keyboard regardless. */
+  .no-scrollbar {
+    scrollbar-width: none;
+  }
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
   }
 }
 

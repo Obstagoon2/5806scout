@@ -136,8 +136,8 @@ function VerifyEmailGate({
   return (
     <main className="flex flex-1 items-center justify-center px-4 py-12">
       <div className="surface-card w-full max-w-md p-6">
-        <h1 className="flex items-center gap-2.5 text-xl font-semibold text-graphite-900">
-          <span aria-hidden className="h-5 w-1.5 bg-maroon-600" />
+        <h1 className="page-title">
+          <span aria-hidden className="page-rule" />
           Verify your email
         </h1>
         <p className="mt-3 text-sm text-graphite-600">

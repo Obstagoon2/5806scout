@@ -239,11 +239,11 @@ export default function PitScoutPage() {
   return (
     <main className="mx-auto flex w-full max-w-2xl flex-col gap-6 px-4 py-8 md:px-6">
       <div>
-        <h1 className="flex items-center gap-2.5 text-xl font-semibold text-graphite-900">
-          <span aria-hidden className="h-5 w-1.5 bg-maroon-600" />
+        <h1 className="page-title">
+          <span aria-hidden className="page-rule" />
           Pit Scout
         </h1>
-        <p className="mt-1 text-sm text-graphite-500">
+        <p className="page-lede">
           One form per robot — filled out in the pit, editable any time.
         </p>
       </div>

@@ -142,11 +142,11 @@ export default function EventPage() {
     <main className="mx-auto flex w-full max-w-5xl flex-col gap-6 px-4 py-8 md:px-6">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h1 className="flex items-center gap-2.5 text-xl font-semibold text-graphite-900">
-            <span aria-hidden className="h-5 w-1.5 bg-maroon-600" />
+          <h1 className="page-title">
+            <span aria-hidden className="page-rule" />
             Event
           </h1>
-          <p className="mt-1 text-sm text-graphite-500">
+          <p className="page-lede">
             {event
               ? `${event.eventName} · ${event.teams.length} teams · synced ${new Date(event.syncedAt).toLocaleString()}`
               : "Team list, match schedule, and EPA stats from TBA + Statbotics."}
@@ -411,9 +411,9 @@ function EventSearchBox({
 function TeamsTable({ event }: { event: EventData }) {
   return (
     <div className="surface-card overflow-x-auto">
-      <table className="w-full min-w-max text-left text-sm">
+      <table className="data-table">
         <thead>
-          <tr className="border-b border-graphite-200 text-xs uppercase tracking-wider text-graphite-500">
+          <tr>
             <th className="px-3 py-2.5">Team</th>
             <th className="px-3 py-2.5">Name</th>
             <th className="px-3 py-2.5">City</th>
@@ -913,9 +913,9 @@ function RankingTable({ eventKey, myTeam }: { eventKey: string; myTeam: string }
 
       {rankings !== null && (
         <div className="surface-card overflow-x-auto">
-          <table className="w-full min-w-max text-left text-sm">
+          <table className="data-table">
             <thead>
-              <tr className="border-b border-graphite-200 text-xs uppercase tracking-wider text-graphite-500">
+              <tr>
                 <th className="px-3 py-2.5">Rank</th>
                 <th className="px-3 py-2.5">Team</th>
                 <th className="px-3 py-2.5">Name</th>
@@ -987,9 +987,9 @@ function ScheduleTable({ event, myTeam }: { event: EventData; myTeam: string }) 
   const myNumber = Number(myTeam);
   return (
     <div className="surface-card overflow-x-auto">
-      <table className="w-full min-w-max text-left text-sm">
+      <table className="data-table">
         <thead>
-          <tr className="border-b border-graphite-200 text-xs uppercase tracking-wider text-graphite-500">
+          <tr>
             <th className="px-3 py-2.5">Match</th>
             <th className="px-3 py-2.5">Red</th>
             <th className="px-3 py-2.5">Blue</th>

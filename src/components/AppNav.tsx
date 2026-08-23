@@ -15,8 +15,15 @@ export function DesktopTabs() {
   const pathname = usePathname();
   const items = useVisibleNavItems();
 
+  // An admin sees fifteen tabs. At the old text-sm/px-4 the row was ~1370px
+  // wide and simply overflowed the page below a maximized laptop, taking the
+  // horizontal scrollbar with it. Smaller type and tighter padding bring it
+  // near 1100px — one line on any normal laptop — and no-scrollbar overflow
+  // keeps it ONE line at every width below that instead of breaking the
+  // layout. Labels stay whole words: "Pit Dash" and "Pit Scout" are already
+  // close enough without abbreviating them into each other.
   return (
-    <nav className="hidden border-b border-graphite-200 bg-surface px-6 md:flex">
+    <nav className="no-scrollbar hidden overflow-x-auto border-b border-graphite-200 bg-surface px-4 md:flex">
       {items.map((item) => {
         const active = isNavItemActive(pathname, item.href);
         return (
@@ -24,10 +31,13 @@ export function DesktopTabs() {
             key={item.href}
             href={item.href}
             aria-current={active ? "page" : undefined}
-            className={`relative border-b-2 px-4 py-3 text-sm font-medium transition ${
+            className={`relative shrink-0 whitespace-nowrap border-b-2 px-3 py-2.5 text-xs transition ${
               active
-                ? "border-maroon-600 text-maroon-700 dark:text-maroon-300"
-                : "border-transparent text-graphite-500 hover:border-graphite-200 hover:text-graphite-900"
+                ? // maroon-200 rather than -300 in dark: at -300 the active
+                  // tab was actually DIMMER than its inactive neighbours, so
+                  // the row read as "nothing selected".
+                  "border-maroon-600 font-semibold text-maroon-700 dark:text-maroon-200"
+                : "border-transparent font-medium text-graphite-500 hover:border-graphite-300 hover:text-graphite-900"
             }`}
           >
             {item.label}

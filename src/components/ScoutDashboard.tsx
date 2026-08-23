@@ -115,11 +115,11 @@ export function ScoutDashboard() {
   return (
     <div className="flex flex-col gap-4">
       <div>
-        <h1 className="flex items-center gap-2.5 text-xl font-semibold text-graphite-900">
-          <span aria-hidden className="h-5 w-1.5 bg-maroon-600" />
+        <h1 className="page-title">
+          <span aria-hidden className="page-rule" />
           {profile ? `Hey, ${profile.fullName.split(" ")[0]}` : "Your shift"}
         </h1>
-        <p className="mt-1 text-sm text-graphite-500">
+        <p className="page-lede">
           Everything assigned to you. Tap anything to open its form.
         </p>
       </div>

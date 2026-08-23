@@ -290,11 +290,11 @@ export default function MatchReviewPage() {
     <main className="mx-auto flex w-full max-w-6xl flex-col gap-6 px-4 py-8 md:px-6">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h1 className="flex items-center gap-2.5 text-xl font-semibold text-graphite-900">
-            <span aria-hidden className="h-5 w-1.5 bg-maroon-600" />
+          <h1 className="page-title">
+            <span aria-hidden className="page-rule" />
             Match Review
           </h1>
-          <p className="mt-1 text-sm text-graphite-500">
+          <p className="page-lede">
             Watch a match back and pin notes to what mattered.
             {called.length > 0 && (
               <>

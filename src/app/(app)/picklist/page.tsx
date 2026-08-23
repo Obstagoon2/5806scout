@@ -281,11 +281,11 @@ export default function PicklistPage() {
   return (
     <main className="flex w-full flex-col gap-6 px-4 py-8 md:px-6">
       <div>
-        <h1 className="flex items-center gap-2.5 text-xl font-semibold text-graphite-900">
-          <span aria-hidden className="h-5 w-1.5 bg-maroon-600" />
+        <h1 className="page-title">
+          <span aria-hidden className="page-rule" />
           Picklist
         </h1>
-        <p className="mt-1 text-sm text-graphite-500">
+        <p className="page-lede">
           {isAdmin
             ? "Drag rows (or use the arrows) to rank alliance picks. Tap a team number or name to open its summary, or DNP to move one to the Do Not Pick list."
             : "Live ranking maintained by your admin — updates in real time. Notes are open to everyone."}
@@ -327,9 +327,9 @@ export default function PicklistPage() {
           {view === "picklist" && (
             <>
               <div className="surface-card overflow-x-auto">
-                <table className="w-full min-w-max text-left text-sm">
+                <table className="data-table">
                   <thead>
-                    <tr className="border-b border-graphite-200 text-xs uppercase tracking-wider text-graphite-500">
+                    <tr>
                       <th className="px-3 py-2.5">Team</th>
                       <th className="px-3 py-2.5">Name</th>
                       <th className="px-3 py-2.5">Event rank</th>
@@ -487,7 +487,7 @@ export default function PicklistPage() {
                   </p>
                 ) : (
                   <div className="surface-card overflow-x-auto border-maroon-200 dark:border-maroon-700">
-                    <table className="w-full min-w-max text-left text-sm">
+                    <table className="data-table">
                       <thead>
                         <tr className="border-b border-maroon-100 text-xs uppercase tracking-wider text-graphite-500">
                           <th className="px-3 py-2.5">Team</th>

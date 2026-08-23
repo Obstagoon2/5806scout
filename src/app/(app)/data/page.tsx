@@ -303,11 +303,11 @@ export default function DataPage() {
     <main className="mx-auto flex w-full max-w-[1600px] flex-col gap-6 px-4 py-8 md:px-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="flex items-center gap-2.5 text-xl font-semibold text-graphite-900">
-            <span aria-hidden className="h-5 w-1.5 bg-maroon-600" />
+          <h1 className="page-title">
+            <span aria-hidden className="page-rule" />
             Data
           </h1>
-          <p className="mt-1 text-sm text-graphite-500">
+          <p className="page-lede">
             {submissions.length} match submission{submissions.length === 1 ? "" : "s"} —
             updates live.
           </p>
@@ -372,10 +372,10 @@ export default function DataPage() {
             />
           </div>
 
-          <div className="surface-card overflow-x-auto">
-            <table className="w-full min-w-max text-left text-sm">
+          <div className="surface-card table-scroll">
+            <table className="data-table">
               <thead>
-                <tr className="border-b border-graphite-200 text-xs uppercase tracking-wider text-graphite-500">
+                <tr>
                   <SortableTh
                     label="Match"
                     sortKey="match"
@@ -463,10 +463,10 @@ export default function DataPage() {
       </p>
 
       {view === "teams" && (
-        <div className="surface-card overflow-x-auto">
-          <table className="w-full min-w-max text-left text-sm">
+        <div className="surface-card table-scroll">
+          <table className="data-table">
             <thead>
-              <tr className="border-b border-graphite-200 text-xs uppercase tracking-wider text-graphite-500">
+              <tr>
                 <SortableTh
                   label="Team"
                   sortKey="team"

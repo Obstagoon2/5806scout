@@ -218,8 +218,8 @@ export default function TeamDetailPage() {
   return (
     <main className="mx-auto flex w-full max-w-4xl flex-col gap-6 px-4 py-8 md:px-6">
       <div>
-        <h1 className="flex items-center gap-2.5 text-xl font-semibold text-graphite-900">
-          <span aria-hidden className="h-5 w-1.5 bg-maroon-600" />
+        <h1 className="page-title">
+          <span aria-hidden className="page-rule" />
           <span className="stat">Team {teamNumber}</span>
           {eventTeam && (
             <span className="font-normal text-graphite-500">
@@ -227,7 +227,7 @@ export default function TeamDetailPage() {
             </span>
           )}
         </h1>
-        <p className="mt-1 text-sm text-graphite-500">
+        <p className="page-lede">
           {eventTeam?.city && `${eventTeam.city} · `}
           {teamSubmissions.length} match submission
           {teamSubmissions.length === 1 ? "" : "s"}
@@ -304,9 +304,9 @@ export default function TeamDetailPage() {
           </div>
         ) : (
           <div className="surface-card overflow-x-auto">
-            <table className="w-full min-w-max text-left text-sm">
+            <table className="data-table">
               <thead>
-                <tr className="border-b border-graphite-200 text-xs uppercase tracking-wider text-graphite-500">
+                <tr>
                   <th className="px-3 py-2.5">Match</th>
                   <th className="px-3 py-2.5">Alliance</th>
                   {counterIds.map((id) => (

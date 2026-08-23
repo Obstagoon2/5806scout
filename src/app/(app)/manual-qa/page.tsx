@@ -93,11 +93,11 @@ export default function ManualQaPage() {
   return (
     <main className="mx-auto flex w-full max-w-2xl flex-col gap-6 px-4 py-8 md:px-6">
       <div>
-        <h1 className="flex items-center gap-2.5 text-xl font-semibold text-graphite-900">
-          <span aria-hidden className="h-5 w-1.5 bg-maroon-600" />
+        <h1 className="page-title">
+          <span aria-hidden className="page-rule" />
           Manual Q&amp;A
         </h1>
-        <p className="mt-1 text-sm text-graphite-500">
+        <p className="page-lede">
           {/* The in-app AI Search path knows the index is live but not how big
               it is, so it reports 0 — showing "0 manual sections loaded" reads
               as broken. Mention the count only when we actually have one. */}
